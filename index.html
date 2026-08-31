@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Arrow Exodus</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root{
+  --bg:#0f1216; --panel:#1a1e24; --panel2:#232830; --line:#39414d;
+  --text:#eef1f5; --muted:#aab3bf; --accent:#f2b04e; --accent2:#7fd4c1;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;}
+#app{min-height:100vh;display:flex;flex-direction:column;}
+.screen{display:none;padding:24px 32px;max-width:1180px;width:100%;margin:0 auto;}
+h1,h2,h3{font-weight:700;line-height:1.2;margin:.2em 0 .5em;}
+a{color:var(--accent);}
+.btn{display:inline-block;border:none;background:#2c333d;color:var(--text);padding:10px 18px;font-size:1rem;cursor:pointer;text-align:center;}
+.btn:hover:not(:disabled){background:#39424e;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn.primary{background:var(--accent);color:#1a1206;}
+.btn.big{font-size:1.1rem;padding:14px 28px;width:100%;}
+.row{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;}
+.card{background:var(--panel);border-radius:10px;padding:16px;}
+.muted{color:var(--muted);}
+.small{font-size:.9rem;}
+#play-screen #canvas-host{position:relative;width:min(78vh,52vw);aspect-ratio:1/1;margin:8px auto;background:#0c0f13;border-radius:8px;overflow:hidden;}
+#pause-overlay,#results-overlay,.modal-backdrop{display:none;}
+</style>
+<script src="/vendor/three.module.min.js" type="module"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ TITLE / HOME ============ -->
+  <section class="screen" data-screen="title">
+    <h1 style="font-size:2rem;">Arrow Exodus</h1>
+    <p class="muted small">Tap unobstructed arrows to send them off the board in their facing direction.</p>
+    <div class="row"><button class="btn primary big" data-action="play">Play</button></div>
+    <div class="row">
+      <button class="btn" data-action="daily">Daily Challenge</button>
+      <button class="btn" data-action="journey-info">Journey</button>
+      <button class="btn" data-action="profile">Profile</button>
+    </div>
+  </section>
+
+  <!-- ============ MODE SELECT ============ -->
+  <section class="screen" data-screen="modes">
+    <h2>Modes</h2>
+    <ul style="padding-left:1.2em;line-height:2;">
+      <li><button class="btn" data-action="learn">Learn — interactive lessons, one rule at a time.</button></li>
+      <li><button class="btn" data-action="journey">Journey — authored progression with mastery stages.</button></li>
+      <li><button class="btn" data-action="daily-mode">Daily — one shared seed per UTC day.</button></li>
+      <li><button class="btn" data-action="practice-info">Practice — selectable difficulty, undo where allowed.</button></li>
+      <li><button class="btn" data-action="challenge-info">Challenge — constrained goals: move limits, speed targets, altered layouts.</button></li>
+      <li><button class="btn" data-action="score-chase-info">Score chase — asynchronous global and friends comparisons.</button></li>
+    </ul>
+  </section>
+
+  <!-- ============ JOURNEY INFO (pre-play) ============ -->
+  <section class="screen" data-screen="journey-info">
+    <h2>Journey</h2>
+    <p id="ji-summary"></p>
+    <div class="row"><button class="btn primary big" data-action="start-journey">Begin Journey</button></div>
+    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+  </section>
+
+  <!-- ============ PRACTICE INFO (pre-play) ============ -->
+  <section class="screen" data-screen="practice-info">
+    <h2>Practice</h2>
+    <p>Select a difficulty. No effect on competitive rating.</p>
+    <div id="pi-list"></div>
+    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+  </section>
+
+  <!-- ============ CHALLENGE INFO (pre-play) ============ -->
+  <section class="screen" data-screen="challenge-info">
+    <h2>Challenge</h2>
+    <p>Six constrained plates. No undo on any of them.</p>
+    <div id="ci-list"></div>
+    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+  </section>
+
+  <!-- ============ SCORE CHASE INFO (pre-play) ============ -->
+  <section class="screen" data-screen="score-chase-info">
+    <h2>Score Chase</h2>
+    <p id="sci-summary"></p>
+    <div class="row"><button class="btn primary big" data-action="start-score-chase">Begin Score Chase</button></div>
+    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+  </section>
+
+  <!-- ============ PROFILE (pre-play) ============ -->
+  <section class="screen" data-screen="profile-info">
+    <h2>Profile</h2>
+    <p id="pf-summary"></p>
+    <div class="row"><button class="btn primary big" data-action="start-profile">Begin Profile</button></div>
+    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+  </section>
+
+  <!-- ============ PLAY (HUD) ============ -->
+  <section class="screen" data-screen="play">
+    <h2 id="hud-title"></h2>
+    <p id="hud-subtitle" class="small muted"></p>
+    <div id="canvas-host"></div>
+    <div id="hud-bottom"></div>
+  </section>
+
+</div>
+<script type="module">
+import { createRenderer, webglAvailable } from '/js/render3d.js';
+window.AXRender = { createRenderer: createRenderer, webglAvailable: webglAvailable };
+if (typeof window.AXRNG === 'undefined') {} // UMD sets it via other scripts? no — loaded below if needed
+</script>
+<script src="/js/rng.js"></script>
+<script src="/js/rules.js"></script>
+<script src="/js/content.js"></script>
+<script src="/js/store.js"></script>
+<script src="/js/audio.js"></script>
+<script type="module">
+  window.AXGame = (await import('/js/game.js')).default;
+</script>
+</body>
+</html>

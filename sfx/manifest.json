@@ -1,0 +1,80 @@
+[
+  {
+    "name": "ui-tap",
+    "seconds": 1,
+    "prompt": "Short soft plastic button tap click, single gentle UI press on a matte panel",
+    "event": "ui"
+  },
+  {
+    "name": "cursor-tick",
+    "seconds": 1,
+    "prompt": "Very short light wooden tick, quiet cursor movement knock on a small block",
+    "event": "cursor"
+  },
+  {
+    "name": "arrow-launch",
+    "seconds": 1,
+    "prompt": "Fast airy whoosh of a small metal arrow released, thin zip through air with a bright metallic tail",
+    "event": "launch"
+  },
+  {
+    "name": "big-arrow-launch",
+    "seconds": 2,
+    "prompt": "Heavy deep whoosh of a large steel arrow launching, low air push with a weighty metal resonance",
+    "event": "launch-big"
+  },
+  {
+    "name": "lane-blocked",
+    "seconds": 1,
+    "prompt": "Dull metal rattle clunk of an arrow head knocking against a solid blocked barrier",
+    "event": "blocked"
+  },
+  {
+    "name": "invalid-buzz",
+    "seconds": 1,
+    "prompt": "Short low mechanical error buzz from a locked switch, two quick muted bursts",
+    "event": "invalid"
+  },
+  {
+    "name": "combo-chime",
+    "seconds": 1,
+    "prompt": "Bright rising glass chime ping, clean tuned streak bonus bell",
+    "event": "combo"
+  },
+  {
+    "name": "new-plate",
+    "seconds": 2,
+    "prompt": "Metallic plate sliding into place and settling with a soft clank, workshop machinery",
+    "event": "wave"
+  },
+  {
+    "name": "plate-cleared",
+    "seconds": 3,
+    "prompt": "Cheerful short victory arpeggio of small bells, bright ascending success fanfare",
+    "event": "win"
+  },
+  {
+    "name": "round-lost",
+    "seconds": 2,
+    "prompt": "Low descending disappointed tone with a soft muted thud, gentle failure cue",
+    "event": "lose"
+  },
+  {
+    "name": "undo-swish",
+    "seconds": 1,
+    "prompt": "Quick reverse paper swish, short rewind whoosh of a move being taken back",
+    "event": "undo"
+  },
+  {
+    "name": "hint-sparkle",
+    "seconds": 1,
+    "prompt": "Gentle two-note sparkle glimmer, soft shimmer hint reveal on small bells",
+    "event": "hint"
+  },
+  {
+    "name": "star-twinkle",
+    "seconds": 1,
+    "prompt": "High delicate star twinkle bell, tiny crystalline ding",
+    "event": "star"
+  }
+]
