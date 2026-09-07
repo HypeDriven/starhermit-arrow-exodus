@@ -34,6 +34,16 @@ a{color:var(--accent);}
 .modal.card{max-width:min(92vw,480px);width:100%;max-height:86vh;overflow:auto;}
 .score-line{display:flex;justify-content:space-between;gap:16px;padding:3px 0;}
 #pause-overlay,#results-overlay,.modal-backdrop{display:none;}
+.btn:focus-visible{outline:3px solid var(--accent2);outline-offset:2px;}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:5px 0;}
+.set-row input[type=range]{flex:0 1 170px;}
+.set-row select{min-height:36px;font-size:1rem;background:var(--panel2);color:var(--text);border:1px solid var(--line);}
+#caption-line{min-height:1.4em;margin:4px 0 0;text-align:center;color:var(--accent2);}
+body.large-text{font-size:19px;}
+body.high-contrast{--bg:#000000;--panel:#0a0a0a;--panel2:#141414;--line:#9a9a9a;
+  --text:#ffffff;--muted:#dcdcdc;--accent:#ffd34d;--accent2:#5ff2d0;}
+body.high-contrast .btn{background:#161616;border:1px solid var(--line);}
+body.high-contrast .btn.primary{background:var(--accent);color:#000;}
 @media (max-width:640px){
   .screen{padding:16px 14px;}
   h1{font-size:1.6rem;}
@@ -55,6 +65,7 @@ a{color:var(--accent);}
       <button class="btn" data-action="daily">Daily Challenge</button>
       <button class="btn" data-action="journey-info">Journey</button>
       <button class="btn" data-action="profile">Profile</button>
+      <button class="btn" data-action="settings">Settings</button>
     </div>
   </section>
 
@@ -116,6 +127,7 @@ a{color:var(--accent);}
     <h2 id="hud-title"></h2>
     <p id="hud-subtitle" class="small muted"></p>
     <div id="canvas-host"></div>
+    <p id="caption-line" class="small" aria-live="polite"></p>
     <div id="hud-bottom"></div>
   </section>
 

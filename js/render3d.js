@@ -560,10 +560,11 @@ export function createRenderer(opts) {
     pointerV.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointerV, camera);
     const hits = raycaster.intersectObjects(pieceGroup.children, true);
-    if (hits.length) {
-      let o = hits[0].object;
+    for (const hit of hits) {
+      let o = hit.object;
       while (o && !o.userData.pieceId) o = o.parent;
-      if (o) return o.userData.pieceId;
+      // ignore meshes whose piece already left the state (mid-exit flight)
+      if (o && pieceMeshes.has(o.userData.pieceId)) return o.userData.pieceId;
     }
     return null;
   }

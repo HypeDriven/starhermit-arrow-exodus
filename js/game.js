@@ -299,6 +299,10 @@ function overlayOpen() {
          $('results-overlay').style.display === 'flex';
 }
 
+function settingsOpen() {
+  return $('settings-overlay') && $('settings-overlay').style.display === 'flex';
+}
+
 function openOverlay(id) {
   $(id).style.display = 'flex';
 }
@@ -306,6 +310,8 @@ function openOverlay(id) {
 function closeOverlays() {
   $('pause-overlay').style.display = 'none';
   $('results-overlay').style.display = 'none';
+  const so = $('settings-overlay');
+  if (so) so.style.display = 'none';
 }
 
 function pause() {
@@ -321,12 +327,151 @@ function resume() {
   closeOverlays();
 }
 
+// ---------- settings ----------
+let settingsOpener = null;   // element to return focus to
+let captionTimer = 0;
+
+function showCaption(text) {
+  const c = $('caption-line');
+  if (!c) return;
+  c.textContent = text;
+  clearTimeout(captionTimer);
+  captionTimer = setTimeout(() => { c.textContent = ''; }, 1800);
+}
+
+function effectiveTier() {
+  const t = doc.settings.graphicsTier;
+  if (t !== 'auto') return t;
+  return (window.matchMedia && matchMedia('(pointer:coarse)').matches) ? 'medium' : 'high';
+}
+
+function applyVisualSettings() {
+  document.body.classList.toggle('large-text', !!doc.settings.largeText);
+  document.body.classList.toggle('high-contrast', !!doc.settings.highContrast);
+  if (renderer3d) {
+    renderer3d.setQuality(effectiveTier());
+    renderer3d.setTheme(doc.settings.theme);
+    renderer3d.setReducedMotion(doc.settings.reducedMotion);
+  }
+  AXAudio.setCaptions(doc.settings.captions, showCaption);
+}
+
+function setRow(labelTxt, control) {
+  const row = el('div', 'set-row');
+  const lab = el('label', null, labelTxt);
+  if (control.id) lab.setAttribute('for', control.id);
+  row.appendChild(lab);
+  row.appendChild(control);
+  return row;
+}
+
+function buildSettingsOverlay() {
+  const ov = el('div', 'modal-backdrop');
+  ov.id = 'settings-overlay';
+  const card = el('div', 'modal card');
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
+  card.setAttribute('aria-labelledby', 'settings-title');
+  const h = el('h2', null, 'Settings');
+  h.id = 'settings-title';
+  card.appendChild(h);
+
+  const s = doc.settings;
+  const check = (id, on) => {
+    const c = el('input'); c.type = 'checkbox'; c.id = id; c.checked = !!on; return c;
+  };
+  const slider = (id, v) => {
+    const r = el('input'); r.type = 'range'; r.id = id;
+    r.min = '0'; r.max = '1'; r.step = '0.05'; r.value = String(v); return r;
+  };
+
+  card.appendChild(setRow('Mute all audio', check('set-muted', s.muted)));
+  card.appendChild(setRow('Music volume', slider('set-music', s.music)));
+  card.appendChild(setRow('Effects volume', slider('set-effects', s.effects)));
+  card.appendChild(setRow('Ambience volume', slider('set-ambience', s.ambience)));
+  card.appendChild(setRow('Voice volume', slider('set-voice', s.voice)));
+  card.appendChild(setRow('Captions for sound cues', check('set-captions', s.captions)));
+
+  const tier = el('select'); tier.id = 'set-tier';
+  [['auto', 'Automatic'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High']].forEach(([v, t]) => {
+    const o = el('option', null, t); o.value = v; tier.appendChild(o);
+  });
+  tier.value = s.graphicsTier;
+  card.appendChild(setRow('Graphics quality', tier));
+
+  const stars = Object.values(doc.progress.journeyStars).reduce((a, b) => a + b, 0);
+  const theme = el('select'); theme.id = 'set-theme';
+  AXContent.THEMES.forEach(t => {
+    const locked = stars < t.unlockStars;
+    const o = el('option', null, t.name + (locked ? ' (unlock at ' + t.unlockStars + ' stars)' : ''));
+    o.value = t.id;
+    if (locked) o.disabled = true;
+    theme.appendChild(o);
+  });
+  theme.value = s.theme;
+  card.appendChild(setRow('Visual theme', theme));
+
+  card.appendChild(setRow('Reduced motion', check('set-motion', s.reducedMotion)));
+  card.appendChild(setRow('Larger text', check('set-large', s.largeText)));
+  card.appendChild(setRow('High contrast', check('set-contrast', s.highContrast)));
+
+  const row = el('div', 'row');
+  const close = el('button', 'btn primary', 'Close');
+  close.setAttribute('data-action', 'settings-close');
+  row.appendChild(close);
+  card.appendChild(row);
+
+  ov.appendChild(card);
+  ov.addEventListener('change', onSettingsChange);
+  ov.addEventListener('input', e => { if (e.target.type === 'range') onSettingsChange(); });
+  return ov;
+}
+
+function onSettingsChange() {
+  const s = doc.settings;
+  s.muted = $('set-muted').checked;
+  s.music = parseFloat($('set-music').value);
+  s.effects = parseFloat($('set-effects').value);
+  s.ambience = parseFloat($('set-ambience').value);
+  s.voice = parseFloat($('set-voice').value);
+  s.captions = $('set-captions').checked;
+  s.graphicsTier = $('set-tier').value;
+  s.theme = $('set-theme').value;
+  s.reducedMotion = $('set-motion').checked;
+  s.largeText = $('set-large').checked;
+  s.highContrast = $('set-contrast').checked;
+  AXAudio.applySettings(s);
+  applyVisualSettings();
+  AXStore.save(doc);
+}
+
+function openSettings() {
+  settingsOpener = document.activeElement;
+  // rebuild so theme locks and values reflect the latest progress/save
+  const old = $('settings-overlay');
+  if (old) old.parentNode.replaceChild(buildSettingsOverlay(), old);
+  else document.getElementById('app').appendChild(buildSettingsOverlay());
+  openOverlay('settings-overlay');
+  const first = $('set-muted');
+  if (first) first.focus();
+}
+
+function closeSettings() {
+  const so = $('settings-overlay');
+  if (so) so.style.display = 'none';
+  if (settingsOpener && settingsOpener.isConnected) settingsOpener.focus();
+  settingsOpener = null;
+}
+
 function resign() {
   if (!round || round.over || round.state.terminal) return;
+  if (round.pausedAt != null) { // settle the open pause so away time is not billed to the round
+    round.pausedTotal += performance.now() - round.pausedAt;
+    round.pausedAt = null;
+  }
   const res = AXRules.applyCommand(round.state,
     { type: 'resign', id: 'c' + (++cmdSeq), atMs: elapsedMs() });
   if (!res.ok) return;
-  round.pausedAt = null;
   round.state = res.state;
   if (renderer3d) renderer3d.syncState(res.state, res.events, false, []);
   handleEvents(res.events);
@@ -505,8 +650,10 @@ const actions = {
   'undo': () => undo(),
   'pause': () => pause(),
   'resume': () => resume(),
+  'settings': () => openSettings(),
+  'settings-close': () => closeSettings(),
   'restart': () => { if (round) startRound(round.ctx.kind === 'tutorial' ? round.lesson.cfg : round.cfg, round.ctx); },
-  'resign': () => { closeOverlays(); if (round) { round.pausedAt = null; } resign(); },
+  'resign': () => { closeOverlays(); resign(); },
   'quit-play': () => quitToTitle(),
   'replay': () => actions['restart'](),
   'next': () => {
@@ -534,6 +681,7 @@ function pieceAtCell(r, c) {
 }
 
 function onKeyDown(e) {
+  if (e.key === 'Escape' && settingsOpen()) { e.preventDefault(); closeSettings(); return; }
   if (currentScreen !== 'play' || !round) return;
   if (overlayOpen()) {
     if (e.key === 'Escape') { e.preventDefault(); resume(); }
@@ -582,6 +730,7 @@ function init() {
   const pauseRow = fillResults(pauseOverlay, 'Paused', []);
   overlayButton(pauseRow, 'resume', 'Resume', true);
   overlayButton(pauseRow, 'restart', 'Restart');
+  overlayButton(pauseRow, 'settings', 'Settings');
   overlayButton(pauseRow, 'resign', 'Resign');
   overlayButton(pauseRow, 'quit-play', 'Quit to Title');
   const resultsOverlay = el('div', 'modal-backdrop');
@@ -610,6 +759,11 @@ function init() {
     document.removeEventListener('pointerdown', unlock);
   };
   document.addEventListener('pointerdown', unlock);
+
+  // saved accessibility/visual preferences apply from boot
+  AXAudio.setCaptions(doc.settings.captions, showCaption);
+  document.body.classList.toggle('large-text', !!doc.settings.largeText);
+  document.body.classList.toggle('high-contrast', !!doc.settings.highContrast);
 
   window.addEventListener('resize', () => { if (renderer3d) renderer3d.resize(); });
   document.addEventListener('visibilitychange', () => {

@@ -265,7 +265,108 @@
       var got2 = attempt(true);
       if (got2) return got2;
     }
+    // Dense configs are almost never solvable by chance, so rejection
+    // sampling exhausts itself. Fall back to constructive placement:
+    // pieces are placed in reverse removal order, each with a lane that
+    // avoids every already-placed piece — solvable by construction.
+    // Runs only after the sampler fails, so boards that previously
+    // generated successfully are unchanged.
+    for (a = 0; a < 400; a++) {
+      var got3 = constructiveAttempt(cfg, rng, false);
+      if (got3) return got3;
+    }
+    for (a = 0; a < 200; a++) {
+      var got4 = constructiveAttempt(cfg, rng, true);
+      if (got4) return got4;
+    }
     throw new Error('could not generate a solvable board for cfg ' + cfg.id);
+  }
+
+  // Constructive placement: deal bolts, then place pieces one at a time;
+  // each piece's exit lane must clear every cell already used (already
+  // placed pieces leave after it, so removing in reverse placement order
+  // is always a valid solution). Verified with solve() as a guard.
+  function constructiveAttempt(cfg, rng, relaxed) {
+    var rows = cfg.board.rows, cols = cfg.board.cols;
+    var nBolts = cfg.bolts || 0, nBigs = cfg.bigs || 0;
+    var nArrows = cfg.arrows || 8;
+    var r, c, i;
+
+    var cells = [];
+    for (r = 0; r < rows; r++) for (c = 0; c < cols; c++) cells.push([r, c]);
+    rng.shuffle(cells);
+    var bolts = cells.slice(0, nBolts);
+    var used = {};
+    for (i = 0; i < bolts.length; i++) used[cellKey(bolts[i][0], bolts[i][1])] = true;
+
+    function laneClear(cr, cc, d) { // no used cell in the lane to the edge
+      var dr = DIRS[d][0], dc = DIRS[d][1];
+      var r2 = cr + dr, c2 = cc + dc;
+      while (r2 >= 0 && r2 < rows && c2 >= 0 && c2 < cols) {
+        if (used[cellKey(r2, c2)]) return false;
+        r2 += dr; c2 += dc;
+      }
+      return true;
+    }
+
+    // placement plan: bigs and singles interleaved, reverse removal order
+    var plan = [];
+    for (i = 0; i < nBigs; i++) plan.push(2);
+    while (plan.length < nArrows) plan.push(1);
+    rng.shuffle(plan);
+
+    var pieces = [];
+    var idn = 0;
+    for (var pi = 0; pi < plan.length; pi++) {
+      var size = plan[pi];
+      var avail = [];
+      for (i = 0; i < cells.length; i++)
+        if (!used[cellKey(cells[i][0], cells[i][1])]) avail.push(cells[i]);
+      rng.shuffle(avail);
+      var placed = false;
+      for (i = 0; i < avail.length && !placed; i++) {
+        var cell = avail[i];
+        if (size === 1) {
+          var dirs = [0, 1, 2, 3];
+          rng.shuffle(dirs);
+          for (var di = 0; di < 4; di++) {
+            if (!laneClear(cell[0], cell[1], dirs[di])) continue;
+            used[cellKey(cell[0], cell[1])] = true;
+            pieces.push({ id: 'p' + (++idn), d: dirs[di], cells: [cell] });
+            placed = true;
+            break;
+          }
+        } else {
+          var horiz = rng.next() < 0.5;
+          var nb = horiz ? [cell[0], cell[1] + 1] : [cell[0] + 1, cell[1]];
+          if (nb[0] >= rows || nb[1] >= cols || used[cellKey(nb[0], nb[1])]) continue;
+          // bigs face along their axis; both cells share one lane, so a
+          // clear lane from the leading cell clears the whole piece
+          var cand = horiz ? [[1, nb], [3, cell]] : [[2, nb], [0, cell]];
+          if (rng.next() < 0.5) cand.reverse();
+          for (var ci = 0; ci < cand.length; ci++) {
+            var d = cand[ci][0], lead = cand[ci][1];
+            if (!laneClear(lead[0], lead[1], d)) continue;
+            used[cellKey(cell[0], cell[1])] = true;
+            used[cellKey(nb[0], nb[1])] = true;
+            pieces.push({ id: 'p' + (++idn), d: d, cells: [cell, nb] });
+            placed = true;
+            break;
+          }
+        }
+      }
+      if (!placed) return null;
+    }
+
+    var probe = { cfg: cfg, bolts: bolts, pieces: pieces, terminal: null };
+    if (!solve(probe)) return null; // guard: construction must be provably solvable
+    if (!relaxed && pieces.length >= 6) {
+      var occ = buildOccupancy(probe);
+      var freeCount = 0;
+      for (i = 0; i < pieces.length; i++) if (pieceIsFree(probe, occ, pieces[i])) freeCount++;
+      if (freeCount === 0 || freeCount > Math.ceil(pieces.length * 0.7)) return null;
+    }
+    return { bolts: bolts, pieces: pieces };
   }
 
   // ---------- game creation ----------
@@ -308,11 +409,17 @@
   // Endless: derive the next wave's parameters from the wave number and
   // deal a fresh board from the continuing rules stream.
   function nextWaveParams(cfg, wave) {
+    var rows = cfg.board.rows, cols = cfg.board.cols;
+    var bolts = Math.min((cfg.bolts || 0) + Math.floor(wave / 2), 8);
+    var bigs = Math.min((cfg.bigs || 0) + (wave % 2), 4);
+    // arrows must fit: bolts take a cell each, bigs one extra cell each,
+    // and the plate keeps at least 6 open cells so waves stay generable
+    var cap = rows * cols - bolts - bigs - 6;
     return {
-      rows: cfg.board.rows, cols: cfg.board.cols,
-      arrows: Math.min(cfg.arrows + wave, cfg.board.rows * cfg.board.cols - 6),
-      bolts: Math.min((cfg.bolts || 0) + Math.floor(wave / 2), 8),
-      bigs: Math.min((cfg.bigs || 0) + (wave % 2), 4)
+      rows: rows, cols: cols,
+      arrows: Math.max(6, Math.min(cfg.arrows + wave, cap)),
+      bolts: bolts,
+      bigs: bigs
     };
   }
 

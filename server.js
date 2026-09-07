@@ -1,25 +1,34 @@
 /* Arrow Exodus — local static file server + /api/v1/time (UTC). */
-'use strict';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-
-const ROOT = __dirname;
+const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8000;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.ico': 'image/x-icon',
   '.opus': 'audio/ogg'
 };
 
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url || '/', `http://localhost:${PORT}`);
-  const pathname = decodeURIComponent(url.pathname);
+  let pathname;
+  try {
+    const url = new URL(req.url || '/', `http://localhost:${PORT}`);
+    pathname = decodeURIComponent(url.pathname);
+  } catch (err) { // malformed URL or bad percent-encoding must not crash the process
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end('bad request');
+    return;
+  }
 
   if (pathname === '/api/v1/time') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -27,8 +36,8 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  let filePath = pathname === '/' ? indexHtmlPath() : path.join(ROOT, pathname);
-  if (!filePath.startsWith(ROOT)) {
+  const filePath = pathname === '/' ? indexHtmlPath() : path.join(ROOT, pathname);
+  if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) {
     res.writeHead(403, { 'Content-Type': 'text/plain' });
     res.end('forbidden');
     return;
@@ -51,4 +60,4 @@ server.listen(PORT, () => {
   console.log('Arrow Exodus server listening on http://localhost:' + PORT);
 });
 
-module.exports = { server: server };
+export { server };

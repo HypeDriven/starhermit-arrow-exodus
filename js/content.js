@@ -214,7 +214,7 @@
         text: 'The dark bolt is riveted to the plate: it blocks lanes forever and cannot be removed. Route around it and clear all three arrows.',
         goal: { event: 'win', count: 1 },
         cfg: lessonCfg('t4', 9004, { rows: 3, cols: 4, bolts: [[1, 1]],
-          pieces: [{ id: 'p1', d: 1, cells: [[2, 0]] }, { id: 'p2', d: 3, cells: [[2, 3]] }, { id: 'p3', d: 2, cells: [[0, 2]] }] }) },
+          pieces: [{ id: 'p1', d: 1, cells: [[2, 0]] }, { id: 'p2', d: 1, cells: [[2, 3]] }, { id: 'p3', d: 2, cells: [[0, 0]] }] }) },
       { id: 't5', title: 'Big arrows',
         text: 'The wide arrow spans two cells and needs BOTH lanes clear. Free the small arrow above its path first, then send the big rig off. Clear the plate.',
         goal: { event: 'win', count: 1 },

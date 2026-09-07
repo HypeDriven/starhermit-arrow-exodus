@@ -53,7 +53,14 @@
     if (doc.v > SAVE_VERSION) return null; // future format: don't clobber
     doc.v = SAVE_VERSION;
     doc.settings = Object.assign({}, DEFAULT_SETTINGS, doc.settings || {});
-    doc.progress = Object.assign(defaultProgress(), doc.progress || {});
+    var dp = defaultProgress();
+    var prev = doc.progress || {};
+    // nested objects merge field-by-field so a partial older save can
+    // never leave counters undefined (which would turn into NaN)
+    doc.progress = Object.assign(dp, prev);
+    doc.progress.stats = Object.assign({ rounds: 0, wins: 0, exits: 0, bestCombo: 0, flawlessWins: 0, playMs: 0 },
+      prev.stats || {});
+    doc.progress.cosmetics = Object.assign({ theme: 'foundry' }, prev.cosmetics || {});
     return doc;
   }
 
