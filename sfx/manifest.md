@@ -17,3 +17,4 @@ Generated with MOSS-SoundEffect v2.0, 48 kHz mono Opus (96 kbps VBR, loudness-no
 | undo-swish.opus | undo | Quick reverse paper swish, short rewind whoosh of a move being taken back |
 | hint-sparkle.opus | hint | Gentle two-note sparkle glimmer, soft shimmer hint reveal on small bells |
 | star-twinkle.opus | star | High delicate star twinkle bell, tiny crystalline ding |
+| time-warning.opus | time-warning | Two short low mechanical ticks like a timer relay clicking, urgent but soft, dry workshop room |

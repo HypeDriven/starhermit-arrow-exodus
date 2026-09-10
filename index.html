@@ -38,6 +38,8 @@ a{color:var(--accent);}
 .set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:5px 0;}
 .set-row input[type=range]{flex:0 1 170px;}
 .set-row select{min-height:36px;font-size:1rem;background:var(--panel2);color:var(--text);border:1px solid var(--line);}
+#title-art{display:block;width:100%;max-width:640px;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin:0 0 14px;background:#0c0f13;}
+.result-art{display:block;width:100%;max-height:150px;object-fit:cover;border-radius:8px;margin:0 0 10px;background:#0c0f13;}
 #caption-line{min-height:1.4em;margin:4px 0 0;text-align:center;color:var(--accent2);}
 body.large-text{font-size:19px;}
 body.high-contrast{--bg:#000000;--panel:#0a0a0a;--panel2:#141414;--line:#9a9a9a;
@@ -59,6 +61,7 @@ body.high-contrast .btn.primary{background:var(--accent);color:#000;}
   <!-- ============ TITLE / HOME ============ -->
   <section class="screen" data-screen="title">
     <h1 style="font-size:2rem;">Arrow Exodus</h1>
+    <img id="title-art" src="/assets/key-art.webp" alt="" onerror="this.style.display='none'">
     <p class="muted small">Tap unobstructed arrows to send them off the board in their facing direction.</p>
     <div class="row"><button class="btn primary big" data-action="play">Play</button></div>
     <div class="row">

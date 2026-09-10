@@ -1,261 +1,284 @@
-# Arrow Exodus — Product and Game Specification
+# Arrow Exodus — Running Game Design Document
 
-**Document status:** design specification only; no implementation is included.  
-**Game index:** 11  
-**Genre:** Direction puzzle  
-**Players:** 1 player; optional asynchronous score comparison  
-**Targets:** desktop browsers, mobile browsers, landscape and portrait where practical  
-**Rendering direction:** Three.js-first presentation with a fully usable semantic HTML interface layer
+## 1. Overview
 
-## 1. Product vision
+**Pitch.** A machined steel plate holds a grid of enamel arrow tiles. Tap any arrow whose lane to the plate edge is clear and it flies off; anything in the lane blocks it. Clear every arrow before the plate locks up.
 
-Arrow Exodus is a game in which players tap unobstructed arrows to send them off the board in their facing direction. Its signature setting is a clean mechanical map of enamel arrows. The product should feel immediately understandable, responsive within one input, and polished enough that the board or playfield itself is the visual hero. Sessions should begin quickly, make the next useful action obvious without solving the game for the player, and end with a clear explanation of score and progress.
+| | |
+|---|---|
+| Genre | Single-player direction/removal puzzle (perfect information, deterministic) |
+| Players | 1; asynchronous comparison is local-only today (see §12) |
+| Session | 30 s (Learn lesson) to ~4 min (7×7 Journey stage); Score Chase runs until the plate locks |
+| Platforms | Desktop and mobile browsers with WebGL; a text fallback preserves progress without WebGL |
+| Rendering | Three.js (r-module in `vendor/`) scene inside a square canvas; every menu, HUD line and overlay is semantic HTML |
+| Version | `starhermit.txt`: `version=1.0.0`, `contentVersion=1` |
 
-The experience must be original. Do not copy names, layouts, characters, iconography, writing, audio, progression maps, or level data from an existing title. Use an original visual language, original procedural assets, and internally authored content.
+File map (everything that ships or tests the game):
 
-### Design pillars
+| Path | Owns |
+|---|---|
+| `index.html` | Shell, inline CSS palette, eight `<section class="screen">` panels, script load order |
+| `js/rng.js` | mulberry32 PRNG, FNV-1a `hashString`, three derived streams (rules / decor / av) |
+| `js/rules.js` | Pure rules: board generation, legality, `applyCommand`, scoring, solver, hints, hashing |
+| `js/content.js` | Themes, 40 Journey stages, 6 Challenges, 3 Practice presets, Score Chase ruleset, daily generator, 6 Learn lessons, 9 achievements |
+| `js/store.js` | Checksummed localStorage save document, defaults, migration, tie-break sort |
+| `js/audio.js` | WebAudio buses, event → clip map with procedural fallback, ambience, generative pad, captions |
+| `js/render3d.js` | Three.js plate, tiles, bolts, tweens, particles, picking, cursor/hint rings, quality tiers |
+| `js/game.js` | Controller: screens, rounds, timer, HUD, overlays, settings, results, achievements, input |
+| `server.js` | Local static server plus `GET /api/v1/time`; declared as `server=server.js` |
+| `sfx/*.opus`, `sfx/manifest.txt` | 13 authored clips and the canonical event binding table (§9) |
+| `assets/` | Key art and results illustrations (§8, §15) |
+| `coverart.png`, `icon.png`, `favicon.svg` | Store cover (1200×675), 256 px icon, SVG tab icon |
+| `tests/rules.test.mjs`, `tests/e2e.mjs` | `npm test` rules suite; Playwright playthrough (`npm run test:e2e`) |
+| `vendor/three.module.min.js` | Three.js (MIT) |
 
-1. **Readable before spectacular:** legal actions, hazards, selection, ownership, and goals remain legible with effects disabled.
-2. **One-input confidence:** every press, tap, drag, key, or pointer action gives immediate visual and sonic acknowledgment.
-3. **Short path to play:** a returning player reaches the primary playfield in at most two deliberate actions.
-4. **Fair mastery:** randomness is seeded and inspectable; outcomes never depend on hidden purchases or invisible stat boosts.
-5. **Scalable beauty:** the same art direction survives low-power mobile hardware and high-resolution desktop displays.
+## 2. Vision and design pillars
 
-## 2. Core game design
+The fantasy is a fletcher's workbench: heavy machined steel, glossy enamel, one warm lamp. Every arrow that leaves the plate should feel like a small mechanical release, and a fully cleared plate like the workshop falling silent.
 
-### Objective and rules contract
+1. **The lane is the whole game.** The only question the player ever answers is "is this arrow's lane clear to the edge?" Rules in: single arrows, two-cell big arrows (both lanes), immovable bolts, time limits. Rules out: rotating arrows, moving pieces, chain reactions, hidden information, power-ups. Nothing on the plate changes except by an arrow leaving.
+2. **Never guess, never grind.** Every plate is proven solvable by the same solver that powers hints (`rules.solve`), so a lock-up is always the player's ordering mistake. Rules in: glow dots on every currently free arrow, a Hint that shows a real solution step, Undo in relaxed modes. Rules out: randomly unsolvable boards, luck-based scoring, timers in the first 14 stages.
+3. **Mistakes are informative, not fatal.** Tapping a blocked arrow shakes the tile, plays the rattle, resets the combo and costs the 500-point flawless bonus — but never ends the round. Rules out: lives, penalties that subtract score, forced restarts.
+4. **Tabletop, not spectacle.** One authored camera fitted to the plate, warm key light, machined-metal materials, tiny bursts of enamel sparks. Rules in: subtle shake tiered by event, pulsing free markers. Rules out: post-processing, bloom-only selection, camera swoops, decorative motion that competes with the arrows.
+5. **Deterministic to the bit.** State transitions depend only on `(state, command)`; the same seed and command list always produce the same `hashState`. Rules out: `Date.now()` or `Math.random()` anywhere in `rules.js`; cosmetic randomness ever touching legality.
 
-Tap unobstructed arrows to send them off the board in their facing direction.
+## 3. Player experience
 
-The rules engine must represent legal actions independently from rendering. It must expose legal-action queries, deterministic resolution, serializable state, a monotonically increasing turn/tick number, and a terminal-state reason. Tutorials and hints call the same legal-action API used by play rather than duplicating rules.
+**Target player.** Someone who likes short logic puzzles with a physical feel (unblock/sliding-tile players), on phone or desktop, in sessions of one to a handful of plates.
 
-### Core loop
+**First 60 seconds.** Title → **Play** starts Journey stage 1 "First Flight" (4×4, five arrows, no bolts, no clock). The HUD subtitle carries the stage intro ("Tap an arrow with a clear lane to send it off the plate. Clear them all."). Glow dots sit over every arrow that can leave right now, so the first tap succeeds without reading. A blocked tap shakes the tile and shows the caption "lane blocked" (when captions are on). Stage 2 "Cross Traffic" introduces blocking in its intro line. New mechanics get an intro line at the stage where they first appear: bolts at stage 9, time limit at 15, big arrows at 17; each is preceded by a mastery stage (10, 20, 30, 40). The optional **Learn** mode (Modes screen) teaches the same six ideas as forced single-action lessons.
 
-The repeated loop is: **orbit or inspect, identify a clear path, tap a piece, animate its exit, and reveal new paths**. Input is locked only during the shortest non-interruptible resolution phase. Cosmetic animation may continue after the logical state is ready, but skip/fast-forward must settle every object into the exact deterministic end state.
+**Session shape.** Journey stage (1–4 min) → results card with score breakdown → **Next stage** or **Replay**; three-star chasing (flawless, under par) is the replay hook. Daily is one plate per UTC day. Score Chase is the long session: plates keep arriving until the player locks one.
 
-### Scoring and victory
+**Emotional beat.** The last three or four exits of a plate, when the remaining arrows all face inward and the player sees the single order that frees them — then the run of launches with rising combo chimes.
 
-Count efficient removals and mistakes; levels must avoid unknowable occlusion. Results show a component breakdown rather than one unexplained total. Store integers for score and simulation units; format values only in presentation. Ties use, in order: primary objective completion, fewer invalid actions, lower authoritative elapsed time, then stable session identifier.
+## 4. Core loop and rules contract
 
-### Modes
+All rules live in `js/rules.js`; the controller (`js/game.js`) never mutates state except through `AXRules.applyCommand`.
 
-- **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action.
-- **Journey:** authored progression with gradually combined mechanics and periodic mastery stages.
-- **Daily:** one shared seed and ruleset per UTC day, synchronized to platform time.
-- **Practice:** selectable difficulty, restart, undo where rules permit, and no effect on competitive rating.
-- **Challenge:** constrained goals such as move limits, speed targets, altered layouts, or restricted tools.
-- **Score chase:** asynchronous global and friends comparisons using validated seeds and rulesets.
+### Board and entities
 
-### Difficulty and content generation
+- Board: `cfg.board.rows × cols` cells (4×4 to 7×7 in shipped content). Directions `d`: 0 up, 1 right, 2 down, 3 left (`DIRS`).
+- **Arrow**: `{ id, d, cells: [[r,c]] }`. **Big arrow**: two adjacent cells, facing along its own axis (horizontal bigs face left/right, vertical bigs face up/down).
+- **Bolt**: static occupied cell in `state.bolts` (`[r,c]` pairs). Never removed.
+- State: `{ v:1, cfg, seed, rngState, tick, pieces, bolts, score{exits, exitPoints, comboBest, perfectBonus, timeBonus, waveBonus, waves, total}, combo, invalid, elapsedMs, endlessWave, terminal, events }` (`createGame`).
 
-- Represent content as versioned data: identifier, seed, initial state, goals, allowed mechanics, par values, tutorial flags, and presentation theme.
-- Run offline validators to prove basic legality, reachable goals, bounded duration, and absence of soft locks. Logic puzzles additionally require a unique or explicitly accepted solution class.
-- Difficulty is measured from solution depth, branching factor, time pressure, motor precision, hidden information, and recovery options—not merely larger numbers.
-- Introduce one new concept in isolation, combine it with one known concept, then test mastery before adding another.
-- Daily seeds are immutable after publication. If content is defective, mark the day excluded from ranking rather than silently replacing it.
+### Legality
 
-### Game-state model
+`laneBlocker(state, occ, piece)`: from each cell of the piece step in direction `d` to the board edge; the first cell occupied by anything other than the piece itself blocks. An arrow is **free** if no cell of it is blocked (`pieceIsFree`, `legalExits`). A big arrow therefore needs both of its cells' lanes clear (the trailing cell's lane passes through the leading cell, which is its own).
 
-`boot → title → profile-ready → mode-select → preparing → tutorial/countdown → active ↔ paused/reconnecting → resolving → results → progression`.
+### Commands (`applyCommand`)
 
-Every transition has one owner and an explicit reason. Backgrounding pauses solo simulation. In hosted play, the authoritative clock continues where rules require it, while the returning client receives a fresh snapshot and a concise “while you were away” summary.
+| Command | Precondition | Effect |
+|---|---|---|
+| `{type:'exit', piece, atMs?}` | piece exists, lane clear, not terminal | Remove piece, `combo++`, score the exit, check win/lock, tick++ |
+| `{type:'probe', piece, atMs?}` | piece exists, lane blocked, not terminal | `invalid++`, `combo=0`, emit `blocked{by, at}` (counted mistake) |
+| `{type:'resign'}` | not terminal | terminal `resigned`, finalize score |
 
-## 3. Interaction and user-interface design
+Rejections (`INVALID`): `game-ended`, `blocked-path` (exit on a blocked piece), `not-blocked` (probe on a free piece), `unknown-piece`, `unknown-command`, `malformed-command`. A rejected command returns the same state object and no events. The controller decides exit vs probe with `checkExit` before sending, so a blocked tap always becomes a counted `probe` (`game.js tapPiece`). `atMs` is quantized to 100 ms into `elapsedMs` so replays are clock-independent.
 
-### Information hierarchy
+### Resolution order after an exit
 
-1. **Primary:** playfield, current objective, legal interaction target, and immediate danger or turn state.
-2. **Secondary:** score/progress, remaining moves or time, opponent/party status where applicable.
-3. **Tertiary:** settings, social controls, cosmetics, help, and history.
+1. Piece removed, `combo++`, `comboBest` updated, points added.
+2. If no pieces remain: endless → deal next wave (§5); otherwise terminal `board-clear`, `won:true`, flawless and time bonuses applied.
+3. Else if `legalExits(s)` is empty: terminal `no-clear-paths`, `won:false`.
+4. If a `timeLimitSec` exists and `elapsedMs ≥ limit`: terminal `time-up` (only reachable when a command arrives after the limit; the controller's timer normally resigns first, see §5).
+5. `finalizeScore` on any terminal.
 
-The Three.js canvas fills the game region but is never the only UI. Menus, text, forms, chat, settings, and assistive descriptions use semantic HTML over or beside the canvas. Maintain a single shared layout model so DOM labels align with projected Three.js targets.
+### Scoring (`rules.js` constants)
 
-### Responsive layouts
+- Single exit `EXIT_BASE = 100`, big exit `BIG_BASE = 250`, plus `COMBO_PT = 25 × (combo − 1)`. Combo counts consecutive exits without a probe.
+- Win bonuses: `PERFECT_BONUS = 500` if `invalid === 0`; `TIME_PT_PER_SEC = 5` per whole second under `cfg.par.timeSec` (requires `elapsedMs > 0`).
+- Endless: `WAVE_BONUS = 300 × waveNumber` each time a plate is cleared.
+- `total = exitPoints + perfectBonus + timeBonus + waveBonus`, written only at terminal; the HUD shows the live sum.
 
-- **Wide desktop (≥1024 CSS px):** centered playfield, objective/progression rail on the left, contextual actions and social/status rail on the right. Maximum line length is 70 characters.
-- **Compact desktop/tablet:** playfield remains central; secondary rails collapse into drawers. Pointer hover may preview but never be required.
-- **Portrait mobile:** top safe-area status bar, square or perspective-fit playfield, bottom thumb-zone action tray, and sheet-based secondary panels. Never place critical controls under browser chrome or display cutouts.
-- **Landscape mobile:** reserve a narrow status rail; preserve at least 44×44 CSS-pixel targets and 8-pixel separation.
-- React to resize, orientation, device-pixel-ratio, safe-area insets, virtual keyboard, and visibility changes without losing input or restarting the round.
+Worked example, Journey 1 (5 single arrows, par 60 s), cleared with no mistakes at 42.3 s: exits 100 + 125 + 150 + 175 + 200 = 750; flawless 500; time ⌊(60000 − 42300)/1000⌋ × 5 = 85; **total 1335**. The same plate with one blocked tap after the second exit: 100 + 125 + 100 + 125 + 150 = 600, no flawless, time bonus unchanged → 685.
 
-### Screens and overlays
+### Terminal states and stars
 
-- **Title/home:** Play is dominant; daily challenge, journey progress, and profile are one level below.
-- **Mode setup:** show rules, expected duration, player count, assists, and whether the result is ranked before commitment.
-- **Play HUD:** objective, progress, current actor/state, pause, and only context-relevant actions.
-- **Pause/settings:** resume first; audio, graphics, controls, accessibility, help, and leave are clearly separated.
-- **Results:** outcome headline, score breakdown, progress, achievements, comparison, replay/retry, and next recommended action.
-- **Help:** visual rule cards generated from current control mappings and representative legal states.
-- Daily challenge, local practice, pause, resume, results, and progression are first-class screens.
+`board-clear` (won), `no-clear-paths`, `time-up`, `resigned`. Journey stars (`game.js recordResult`): 1 for a win, +1 for zero mistakes, +1 for finishing under par. Stars are the only currency: theme unlocks at 10 / 25 / 45 / 70 total stars.
 
-### Input
+### RNG and seeding
 
-- Pointer/touch: raycast only against explicit interaction layers; use pointer capture for drags; cancel safely on lost capture.
-- Touch: distinguish tap, drag, and camera gesture by distance/time thresholds; never require multi-touch for core play.
-- Keyboard: directional navigation among legal targets, confirm, cancel, pause, undo/hint where valid, and camera reset.
-- Gamepad: focus navigation, primary/secondary actions, pause, and remappable axes/buttons.
-- Prevent accidental double commits with action identifiers, not arbitrary long debounce timers. Provide visible drag origin, target preview, and invalid-action explanation.
+`createGame` derives the rules stream `RNG.derive(seed, STREAM_RULES)` (`seed ^ 0x9e3779b9`, mulberry32). `generateBoard` shuffles cells, places bolts, big arrows, then singles with dealt directions; a candidate is accepted only if `solve()` finds a full removal order and (strict pass, ≥6 pieces) between 1 and ⌈70 %⌉ of pieces are free at the start. 200 strict attempts, 400 relaxed, then a constructive placer (`constructiveAttempt`, 400 + 200 tries) that places pieces in reverse removal order so dense configs are solvable by construction. `solve` is a memoised DFS capped at 250 000 nodes. Seeds per mode are in §5. Decor (`STREAM_DECOR`) drives the ingots beside the plate; `STREAM_AV` drives synth pitch variants; neither touches rules.
 
-### Accessibility
+### Hints and undo
 
-- Full keyboard operation and visible focus; DOM equivalents for canvas controls; headings and live regions for objective, turn, score, errors, and results.
-- Color is reinforced by shape, texture, icon, or label. Include contrast-safe and common color-vision palettes.
-- Reduced-motion mode removes camera swoops, shake, parallax, rapid particles, and large scaling while preserving event timing.
-- Independent sliders for music, effects, ambience, and voice; captions/text cues for meaningful audio; no audio-only gameplay.
-- Options for larger text, high contrast, left-handed controls, hold-versus-toggle, timing assistance, haptics off, and tutorial replay.
-- Announce Three.js board state through a concise navigable model rather than describing every decorative object.
+`hint(state)`: first step of `solve()` if one exists, else the first legal exit; the renderer draws a blue ring for 2.6 s. Hints never cost points. Undo (`game.js undo`) pops the previous snapshot from `round.history`; unlimited, no score penalty, not available once terminal; elapsed time is not rewound.
 
-## 4. Visual and audio design
+## 5. Modes and progression
 
-### Visual contract
+| Mode | Entry | Config source | Seed | Undo / Hint | Clock |
+|---|---|---|---|---|---|
+| Journey (40 stages) | Title **Play** (next unstarred stage), Journey → **Begin Journey** | `AXContent.JOURNEY` rows | fixed 201–240 | yes / yes | stages 15, 23, 27, 30, 32, 35, 38, 40 |
+| Learn (6 lessons) | Modes → **Learn** (first unfinished) | `tutorialLessons()` explicit layouts | fixed 9001–9006 | t6 only / yes | none |
+| Daily | Title or Modes → **Daily** | `dailyConfig(utcDateString())` | FNV of `arrowexodus-daily-v1-<date>` | yes / yes | 240 s only on rot 6 |
+| Practice (Casual 4×4·6, Apprentice 5×5·10·2 bolts·1 big, Expert 6×6·14·4·2) | Modes → Practice → preset | `PRACTICE` | `hash(id:sessionId:roundsPlayed)` — fresh every round | yes / yes | none |
+| Challenge (c1–c6) | Modes → Challenge → card | `CHALLENGES` | fixed 501–506 | per card; no undo except c2 | c1 90 s, c5 120 s, c6 180 s |
+| Score Chase (endless) | Modes → Score chase → **Begin** | `SCORE_CHASE` 6×6, 12 arrows, 3 bolts, 1 big | per round like Practice | no / no | none |
 
-The subject is the active playfield at near-tabletop to room scale, framed so state changes occupy most of the screen. The scene is a clean mechanical map of enamel arrows. Use an authored camera, original procedural geometry, restrained environmental storytelling, and a deterministic visual seed. The no-post-processing baseline must still communicate hierarchy, depth, selection, and state.
+**Journey curve** (`content.js J`): 4×4 with 5→8 arrows (1–4); 5×5 9→12 (5–8); bolts from 9; theme index steps up every ~8 stages; time limit first at 15; big arrows from 17; 6×6 from 14, 7×7 from 25; stage 40 "Grand Exodus" is 7×7, 20 arrows, 6 bolts, 3 bigs, 200 s. Mastery stages (10, 20, 30, 40) flag `mastery:true` and combine everything introduced so far. Stages are not gated: **Play** always picks the first stage without stars, and results offer **Next stage** after any win.
 
-### Three.js scene design
-
-- Use physically based lighting and color management with one dominant key, soft environment fill, and contact grounding. Gameplay colors are tested after tone mapping.
-- Build reusable semantic meshes for active pieces, board cells, obstacles, targets, and environment modules. Geometry detail follows silhouette importance and camera distance.
-- Use instancing for repeated pieces and props, pooled effects, texture atlases where appropriate, and explicit disposal on scene changes.
-- Separate render layers for environment, gameplay, selection/ghosts, effects, and UI anchors. Cosmetic particles never intercept raycasts.
-- Selection uses a combination of lift/pose, outline or rim, and grounded marker—not bloom alone. Legal targets preview before commit; invalid targets explain why.
-- Event hierarchy: input acknowledgment < legal move < combo/goal < round completion. Reserve camera motion, strong emission, and dense particles for the highest tier.
-- Audio uses original short transients tied to logical events, layered material impacts, quiet ambience, and adaptive music stems. Randomized pitch/variant is seeded for replay consistency where recording matters.
-
-### Camera and motion
+**Daily** parameters from `rot = dayIndex % 7`: size 5 + (rot % 3); arrows min(9 + 2·rot, size² − 8); bolts rot % 4; bigs 1 + (rot % 2) when rot ≥ 4; par 120 + 20·rot s; theme `THEMES[rot % 5]`. Best score per date is stored in `dailiesDone`.
 
-- Choose orthographic or low-distortion perspective according to depth requirements; expose framing constants rather than magic offsets.
-- Camera transitions use authored duration/easing or critically damped springs and remain interruptible. Never animate by cumulative per-frame lerp.
-- Decorative motion is paused or reduced when hidden. Gameplay animation derives from simulation state and interpolation alpha, not frame count.
-- Camera shake is low-amplitude, event-tiered, disabled by reduced motion, and never changes raycast truth.
+**Score Chase waves** (`nextWaveParams`): wave n deals bolts min(3 + ⌊n/2⌋, 8), bigs min(1 + n % 2, 4), arrows max(6, min(12 + n, 36 − bolts − bigs − 6)), from the continuing rules stream; the HUD shows `plate n`. The round ends only by lock-up or resign; `endlessBest` persists.
 
-### Graphics-skill routing
+**Time limits.** The controller timer (250 ms) resigns the round when the limit elapses (`startTimer`), so the stored terminal reason is `resigned` while the headline reads "Time's up" via `round.timedOut`. Ten seconds before the limit the `time-warning` cue plays once.
 
-During implementation, begin with `threejs-skill-router` and load only the following retained skills because they materially affect this visual target:
+**Unlocks.** Themes by star total (Foundry 0, Glacier 10, Verdigris 25, Ember 45, Porcelain 70); locked options are disabled in Settings. Achievements (§12) unlock at results time.
 
-- `threejs-camera-direction` for deliberate framing and input-safe camera transitions
-- `threejs-procedural-geometry` for authored, inspectable meshes instead of primitive-only placeholders
-- `threejs-procedural-materials` for coherent PBR surfaces, perceptual parameters, and readable state masks
-- `threejs-procedural-animation` for deterministic motion phases, springs, and interruption-safe transitions
-- `threejs-procedural-vfx` for bounded particles, trails, impact accents, and event hierarchy
-- `threejs-exposure-color-grading` for tone mapping, adaptation limits, and accessible color separation
-- `threejs-image-pipeline` for explicit depth/color ownership and pass ordering
-- `threejs-visual-validation` for fixed-view captures, seed sweeps, and performance evidence
+## 6. Controls and interaction
 
-Follow the skill pack's acceptance gate: deterministic seeds, debug views for controlling fields, perceptually grouped parameters, mechanism-backed quality tiers, and a readable no-post baseline. Do not add an effect merely because a skill exists.
+| Input | Desktop | Mobile | Feedback |
+|---|---|---|---|
+| Tap an arrow | left click on the tile | single touch on the tile | free: launch tween + sparks + `launch`/`launch-big` (+ `combo` from ×2); blocked: 0.3 s sideways shake + `blocked` + mistake count |
+| Move focus ring | Arrow keys (starts at 0,0) | — | white ring on the cell + `cursor` tick |
+| Launch focused cell | Enter or Space | — | as tap |
+| Hint | H or **Hint (H)** button | button | blue ring 2.6 s + `hint` |
+| Undo | U or **Undo (U)** button | button | tile drops back instantly + `undo` |
+| Pause | P, Esc, or **Pause (Esc)** | button | overlay; Esc resumes |
+| Restart / Replay | button (HUD, pause, results) | button | the same seed is re-dealt in every mode; a fresh Practice or Score Chase board comes from re-entering the mode (seed = `hash(id:sessionId:roundsPlayed)`) |
+| Settings | Esc closes | tap Close | focus returns to the opener |
 
-### Performance budgets
+Canvas picking (`render3d.pickPiece`) raycasts only the piece group; tiles mid-flight are ignored so a double tap cannot re-launch. Input is refused while paused, after the round is over, or when the state is terminal (`tapPiece`); there is no animation lock — a new tap during a launch tween is accepted because the logical state is already settled. Every `[data-action]` button plays `ui` before its handler. Hiding the tab pauses the round and suspends audio; returning resumes audio only (the player un-pauses). There is no drag, pinch, or camera gesture; `touch-action: manipulation` on the canvas host suppresses double-tap zoom.
 
-- Target 60 fps at the default tier and a stable 30 fps fallback on constrained mobile hardware.
-- Default active gameplay: ≤150 draw calls desktop, ≤90 mobile; ≤350k visible triangles desktop, ≤140k mobile; transient particles ≤20k desktop and ≤5k mobile.
-- Cap device pixel ratio by quality tier; dynamically lower render scale before dropping simulation rate. UI text remains native resolution.
-- Avoid runtime shader compilation during active play by prewarming required variants. Avoid per-frame allocations in simulation/render loops.
-- Quality tiers independently control shadows, environment detail, particles, post effects, antialiasing, and render scale; they never alter rules or visibility of hazards.
+## 7. Screens and UI flow
 
-## 5. Technical architecture
+`showScreen(name)` toggles `display` on the eight `.screen` sections; overlays are `position:fixed` backdrops.
 
-### Client modules
+```
+title ──Play/Daily──────────────► play ◄──────────────────────────────┐
+  │ Journey ► journey-info ─Begin─┘   ├─ pause-overlay (Resume, Restart, Settings, Resign, Quit) │
+  │ Profile ► profile-info           ├─ results-overlay (Replay, Next stage?, Back to Modes, Title) │
+  │ Settings ► settings-overlay      └─ settings-overlay (from pause)                                 │
+  └─(journey-info / profile-info) Back to Modes ► modes ─► learn / journey-info / daily / practice-info / challenge-info / score-chase-info
+```
 
-- `bootstrap`: host handshake, capability detection, asset manifest, lifecycle.
-- `rules`: pure deterministic state transitions, legality, scoring, seeded random stream.
-- `session`: local or hosted commands, snapshots, prediction policy, reconnect, replay.
-- `render`: Three.js scene graph, semantic entity views, camera, lighting, VFX, quality.
-- `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror.
-- `audio`: buses, event mapping, focus/background behavior, decode and memory policy.
-- `content`: versioned levels, themes, tutorials, validation metadata.
-- `platform`: token-aware REST/WebSocket adapter, retries, rate-limit handling, telemetry consent.
+- **Title**: heading, key art (`#title-art`, 16:9, max 640 px), one-line rule, primary **Play**, then Daily / Journey / Profile / Settings.
+- **Modes**: six buttons with one-line descriptions. Reached from Journey or Profile via **Back to Modes**, or from results.
+- **Info panels**: Journey (stage n of 40, cleared count, stars), Practice (three preset buttons with board summary), Challenge (six cards with intro and local best), Score Chase (intro + local best), Profile (rounds, wins, arrows launched, best combo, achievements n/9).
+- **Play**: `#hud-title` (mode + stage), `#hud-subtitle` (intro/lesson text), square `#canvas-host` sized `min(72vh, 100%, 640px)`, `#caption-line` (aria-live), `#hud-status` (Score · arrows left · mistakes · time · limit · plate), action row.
+- **Results**: illustration (cleared / locked), headline ("Plate cleared!", "No clear paths left", "Time's up", "Round resigned"), breakdown rows (Exits, Best combo, Flawless bonus, Time bonus, Plates cleared, Mistakes, Time, Total), buttons. Lesson completion reuses the card with the lesson title.
 
-No module may mutate rules state except through a validated command. Rendering consumes immutable snapshots plus interpolation data. UI state and simulation state are separate so closing a drawer cannot affect a match.
+Layout: `.screen` max-width 1180 px, padding 24/32 px; ≤640 px wide → padding 16/14 px, `h1` 1.6 rem, buttons ≥44 px tall. Portrait phone: the canvas is the full width and the action row wraps beneath it; landscape phone: the canvas is 72 vh tall and centred, HUD scrolls below. Modals are `max-width: min(92vw, 480px)`, `max-height: 86vh`, scrollable. The viewport is `viewport-fit=cover`; no safe-area insets are applied (§16). Must never be cut off: the canvas, the four HUD buttons, the results buttons.
 
-### Determinism, replay, and security
+## 8. Art direction
 
-- Fixed simulation step where physics exists; quantize authoritative inputs and define stable collision/order rules.
-- Use separate seeded random streams for rules, content decoration, and audiovisual variants. Cosmetic randomness never changes rules.
-- Replay envelope: schema version, build/content version, seed, initial hash, timestamp offset, ordered commands, periodic state hashes, terminal result.
-- Validate all network input for identity, session membership, turn/tick, bounds, rate, payload size, and legal action. Reject duplicates idempotently by command ID.
-- Treat client clocks, scores, inventories, roles, physics outcomes, and completion claims as untrusted in competitive contexts.
+**Palette (index.html `:root`)**: bg `#0f1216`, panel `#1a1e24`, panel2 `#232830`, line `#39414d`, text `#eef1f5`, muted `#aab3bf`, accent amber `#f2b04e`, accent2 teal `#7fd4c1`; buttons `#2c333d` / hover `#39424e`; canvas well `#0c0f13`. High-contrast variant: bg `#000000`, panel `#0a0a0a`, panel2 `#141414`, line `#9a9a9a`, text `#ffffff`, muted `#dcdcdc`, accent `#ffd34d`, accent2 `#5ff2d0`.
 
-### Loading and resilience
+**Themes (content.js `THEMES`, applied by `render3d.setTheme` from the Settings choice)**:
 
-- Show useful progress by asset group; load core rules/UI first and scenic assets lazily. Provide procedural low-detail substitutes if optional assets fail.
-- Cache immutable hashed assets and the last safe local snapshot. Updates activate between rounds, never during one.
-- Recover WebGL context by rebuilding GPU resources from retained CPU descriptors. If 3D is unavailable, present a clear compatibility message and preserve account/session state.
-- Background tabs reduce rendering to zero or a low heartbeat while preserving required network lifecycle.
+| Theme | plate | cell | enamel (single) | enamel2 (big) | bolt | key light | background |
+|---|---|---|---|---|---|---|---|
+| Foundry Plate | `#2a3038` | `#232932` | `#f2b04e` | `#7fd4c1` | `#59687c` | `#ffe0b0` | `#14171d` |
+| Glacier Mill | `#39424e` | `#303947` | `#9fd8f0` | `#f0c987` | `#6d7f94` | `#d8f0ff` | `#10161e` |
+| Verdigris Works | `#2e3d3a` | `#27342f` | `#7fd4c1` | `#e8b04e` | `#5d7a70` | `#d0ffe8` | `#101814` |
+| Ember Forge | `#3a2c28` | `#32251f` | `#f08a4e` | `#f0d8a0` | `#7a5f52` | `#ffc890` | `#18100d` |
+| Porcelain Bench | `#8a8f96` | `#7d828a` | `#2e6fe4` | `#e4572e` | `#4e545e` | `#fff2dd` | `#3a3e45` |
 
-## 6. StarHermit integration
+**Shape language.** Everything is procedural in `render3d.geoCache`: a rimmed plate with four hex studs, recessed 0.96-unit cell inlays, 0.92-unit bevelled tiles with an enamel cap and an extruded metal chevron (big tiles span two cells with two chevrons), hex bolt heads with a slot. Direction is carried by chevron geometry, never colour. Single arrows are `enamel`, big arrows `enamel2`. Materials: plate roughness 0.45 / metalness 0.75, enamel roughness 0.3 / metalness 0.05, bolts metalness 0.85. ACES tone mapping, exposure 1.05, sRGB output. Lights: warm directional key (4, 8, 5) with PCF soft shadows, hemisphere fill, theme-accent rim.
 
-### Packaging and launch
-- Ship a browser distribution with `starhermit.txt` at its root, `name=Arrow Exodus`, and `launch=index.html`. Keep source files, secrets, design documents, and source maps outside the uploaded distribution.
-- Read the game scope from the short-lived launch token rather than hard-coding a slug. Use same-origin `/api` and `/ws` routes when hosted. Refresh account tokens through the host shell; never persist access or launch tokens in local storage.
-- Synchronize countdowns and daily boundaries with `GET /api/v1/time` using round-trip-adjusted offset. Treat rate limits and structured `{"error":"..."}` responses as recoverable UI states.
+**Hero.** The plate. The camera (`fitCamera`) is authored to frame the whole plate at 36° FOV from a raised three-quarter view; it never orbits.
 
-### Identity, profile, presence, and preferences
-- Support guest practice locally, then offer account sign-in for durable progress. Use the profile display name and avatar only where identity is useful, honor profile privacy, and send throttled presence heartbeats while actively playing.
-- Store accessibility, audio, graphics tier, tutorial completion, camera preference, and rules options through per-game settings. Declare desktop action bindings and read player overrides; touch mappings remain responsive UI controls.
-- Cloud-save progression as a versioned, checksummed document. Resolve conflicts by preserving both snapshots and asking the player when neither is a strict descendant. Never place credentials or private chat in saves.
+**Typography.** System UI stack (`-apple-system, Segoe UI, Roboto, …`), 16 px base, 19 px with Larger text; headings 700 weight.
 
-### Discovery, activity, and social layer
-- Start and end launch activity so playtime is accurate. Surface entitlement or catalog state only in host-owned chrome; the game itself must remain playable without promotional interruption.
-- Provide a compact friends panel for score comparison and invitations where appropriate. Respect presence visibility and do not expose a hidden or private profile through game UI.
-- Do not create gameplay chat or voice surfaces for the initial release; they are not relevant to the core solo loop. Friends-only leaderboard filtering and shareable challenge seeds supply the social layer without unnecessary communication permissions.
+**Motion.** Tween manager with authored easings, no cumulative lerps. Launch: 0.5 s ease-in slide off the plate with a small arc and spin, 18 sparks (8 on Low) at the edge, camera shake 0.04 (0.08 big). Blocked: 0.3 s perpendicular shake. Drop-in: 0.35 s ease-out fall for new waves. Win: 90-particle gold burst (`#ffd070`), shake 0.12. Free markers pulse ±12 %. Hint ring `#7fb0ff`. **Reduced motion**: pieces vanish instantly, no drop-in, no shake, no pulse; event timing is unchanged.
 
-### Achievements and leaderboards
-- Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- Provide global and friends-filtered boards for the primary metric plus a fair daily/weekly board. Include ruleset, content version, seed, assists, and duration with every submission; reject impossible or stale-version scores.
-- For globally competitive boards, validate score claims through a lightweight authoritative script using replayable input logs and deterministic seeds. If validation is unavailable, label the board casual and apply plausibility/rate checks.
+**Visual assets the design calls for**: title key art (`assets/key-art.webp`), results illustrations for cleared and locked plates (`assets/plate-cleared.webp`, `assets/no-lanes.webp`), store cover (`coverart.png`), icon and favicon. See §15.
 
-### Sessions and transport
-- The initial game is solo. Use an authoritative JavaScript Game Script only for seeded daily sessions, replay validation, and durable achievement delivery; ordinary practice can run locally and offline after initial load.
-- A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
-- Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
+## 9. Audio direction
 
-### Publishing and operations
-- Keep the authoritative script inside the distribution and declare it with `server=server.js`. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
-- Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
-- Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
+**Mix.** Four gain buses (`music`, `effects`, `ambience`, `voice`) into a master (`audio.js ensureCtx`); defaults 0.6 / 0.9 / 0.5 / 0.8; Mute zeroes all buses. Audio starts on the first pointer gesture (`AXAudio.start`). Every authored clip plays on `effects`. Ambience is a looped low-passed brown-noise room tone at 260 Hz (workshop hum). Music is a generative pad: a four-chord walk (A–C–E, F–A–C, G–B–D, D–A–D) at half pitch through a 640 Hz low-pass, one swell every 5.2 s. The `voice` bus exists but nothing routes to it. Each event has a procedural fallback (`SFX` map) that plays while the clip is loading or if the fetch fails; synth pitch variants use the seeded AV stream. Captions (Settings) print each cue's short text on `#caption-line` for 1.8 s.
 
-## 7. Content, economy, and retention
+**SFX event table** (source of `sfx/manifest.txt`; all clips MOSS-SFX v2.0, 48 kHz mono Opus):
 
-- Launch scope: tutorial sequence, at least 40 authored stages or equivalent procedural depth, daily challenge, practice, five visual themes, and a mastery track.
-- Cosmetic rewards may alter materials, trails, board surrounds, ambience, or profile flourishes, but never hitboxes, timing windows, information, or power.
-- Reward cadence: early feedback every session, meaningful unlock every 3–5 sessions, and long-term goals visible without manipulative countdowns.
-- No real-money wagering, paid random rewards, forced advertising, energy pressure, punitive streak loss, or purchases that affect competitive outcomes.
-- Notifications, if ever added by the host, are opt-in, frequency-capped, quiet-hour aware, and never use false urgency.
+| Event id | File | Sound | Usage |
+|---|---|---|---|
+| `ui` | ui-tap.opus | soft plastic button tap | every `[data-action]` press |
+| `cursor` | cursor-tick.opus | tiny wooden tick | keyboard focus ring moved |
+| `launch` | arrow-launch.opus | thin metallic zip and whoosh | single arrow exits |
+| `launch-big` | big-arrow-launch.opus | heavy steel whoosh | big arrow exits |
+| `blocked` | lane-blocked.opus | dull metal rattle clunk | blocked tap (counted mistake) |
+| `invalid` | invalid-buzz.opus | low double buzz | command rejected outright |
+| `combo` | combo-chime.opus | rising glass chime | layered on exits at combo ≥ 2 |
+| `wave` | new-plate.opus | plate sliding in and settling | Score Chase next wave |
+| `win` | plate-cleared.opus | short bell arpeggio | plate cleared |
+| `lose` | round-lost.opus | descending tone with thud | lock-up, time up, resign |
+| `undo` | undo-swish.opus | reverse swish | undo |
+| `hint` | hint-sparkle.opus | two-note sparkle | hint ring shown |
+| `star` | star-twinkle.opus | crystalline ding | achievement unlocked; lesson goal reached |
+| `time-warning` | time-warning.opus | two low relay ticks | once at 10 s left on timed plates; synth fallback if the clip fails to load |
 
-## 8. Analytics and privacy
+## 10. Localization
 
-Measure tutorial completion, first meaningful action time, session duration bands, level attempts, quit state, input modality, performance tier, reconnect success, and accessibility feature usage only in aggregate. Use random session identifiers, short retention, and explicit consent where required. Never collect message content, drawings, voice, private board notes, or exact pointer trails as analytics.
+The shipped build is **English only**: `<html lang="en">`, strings hard-coded in `index.html`, `js/game.js` (HUD, results, settings labels) and `js/content.js` (stage names, intros, lesson text, achievements). There is no language switcher and no locale detection. The product requirement — en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT — is listed under Design intent not yet implemented (§16). Layout allowances already in place for expansion: buttons wrap in `.row`, the results card scrolls, the settings rows use `justify-content: space-between` with a flexible label.
 
-Success targets for the first public test: median first-play time under 20 seconds, tutorial completion above 80%, crash-free sessions above 99.5%, p95 input acknowledgment below 100 ms locally, and at least 95% of supported mobile sessions holding their selected frame-rate tier.
+## 11. Accessibility
 
-## 9. Testing and acceptance criteria
+- **Keyboard-only path**: every screen is plain buttons in DOM order; in play the arrow keys move a visible white ring, Enter/Space launches, H/U/P/Esc act; Esc resumes from pause and closes Settings. Focus is visible (`:focus-visible` 3 px teal outline) and Settings returns focus to its opener.
+- **Announcements**: `#hud-status` and `#caption-line` are `aria-live="polite"`; results and settings cards are `role="dialog" aria-modal="true"`.
+- **Captions**: Settings → "Captions for sound cues" prints the cue text (§9).
+- **Contrast and size**: text `#eef1f5` on `#0f1216` (≈16:1); High contrast switches to the black palette; Larger text raises the base to 19 px. Direction is geometry, single vs big arrows differ by size and chevron count as well as colour.
+- **Reduced motion**: Settings toggle (also persisted) removes drop-ins, flights, shake and pulses (§8).
+- **Targets**: buttons ≥44 px tall on narrow screens; tiles are 0.92 cell wide, about 60 px on a 5×5 plate at the 362 px mobile canvas but only ~38 px (less with foreshortening) on 7×7 plates (§16).
+- **No WebGL**: the play screen shows a text notice; menus, settings and progress still work.
+- Not provided: a DOM mirror of the board for screen readers (a `boardMirror` setting is stored but unused), gamepad input, hold/toggle or confirm-tap assists (`confirmExits`, `leftHanded`, `haptics`, `colorPalette` are stored defaults with no effect).
 
-### Rules and content
+## 12. StarHermit integration
 
-- Unit-test every legal action, invalid-action reason, scoring component, terminal state, and serialization migration.
-- Property-test deterministic replay: the same version, seed, and commands produce identical state hashes.
-- Fuzz malformed commands and generated content; prove no hangs, NaN physics, impossible mandatory states, or unbounded loops.
-- Golden-test representative easy, medium, hard, interrupted, resumed, and terminal sessions.
+Conventions per https://wiki.starhermit.com/.
 
-### Interface and accessibility
+- **Manifest** `starhermit.txt`: `name=Arrow Exodus`, `launch=index.html`, `owner=<uuid>`, `server=server.js`, `version=1.0.0`, `contentVersion=1`, `cover=coverart.png`.
+- **Server script** `server.js`: serves the distribution and answers `GET /api/v1/time` with `{ now, utcDate }`. The client does not yet call it (dailies use the device clock, §16).
+- **Used**: nothing beyond packaging. No launch-token handshake, identity, presence, cloud save, leaderboards, achievements API, sessions, rooms or chat calls are made.
+- **Local stand-ins**: achievements (9 stable keys: `first-exit`, `first-win`, `flawless`, `combo-8`, `journey-half`, `journey-done`, `daily-7`, `score-3000`, `exits-500`) unlock idempotently in `recordResult` and are stored in the save document; personal bests per Journey stage, Challenge, Daily date and Score Chase live in the same document. `store.js` carries a leaderboard tie-break (`sortEntries`: score desc, fewer mistakes, lower duration, session id) and a local board store that the UI does not yet read.
 
-- Test pointer, coarse touch, keyboard-only, gamepad, screen reader, zoom to 200%, reduced motion, high contrast, safe areas, and both mobile orientations.
-- Verify focus restoration after every modal, meaningful live announcements, no keyboard traps, and no hover-only instructions.
-- Confirm all critical labels fit translated strings at 30% expansion and support right-to-left layout where localized.
+## 13. Technical architecture
 
-### Graphics and performance
+- **Load order** (`index.html`): ES module `render3d.js` (imports Three.js) exposes `window.AXRender`; classic scripts `rng.js`, `rules.js`, `content.js`, `store.js`, `audio.js` define UMD globals; then `game.js` is imported as a module and runs `init()`.
+- **rules.js** is browser/Node isomorphic and side-effect free; snapshots are cloned via JSON so `applyCommand` never mutates its input. `hashState` (stable-key JSON + FNV-1a) identifies a state minus its event list; `serialize`/`deserialize` gate on `STATE_VERSION`. `validateCommandShape` bounds command size (512 bytes) and id length for a future network boundary.
+- **Replay/determinism**: `createGame(cfg)` + ordered commands reproduce the state hash (`tests/rules.test.mjs`). Elapsed time enters only through quantized `atMs`.
+- **Controller** (`game.js`): `round` holds `cfg, ctx, state, history[], startMs, pausedTotal, pausedAt, timerId, cursor, over, timedOut, warned, lesson, lessonCount`; command ids `c<n>` are monotonic. Pause is implemented as clock accounting (`pausedTotal`), so the rules never see paused time.
+- **Renderer** (`render3d.js`): consumes `(state, events, instant, freeIds)` in `syncState`; reconciles meshes to the snapshot (undo, waves), animates only the differences. Layers: 0 environment, 1 gameplay, 2 selection (rings, glow dots), 3 effects (pooled 400-point particle system). Raycasts hit layers 1–2 only. Geometry is cached once; materials rebuild per theme; `dispose()` releases GPU resources when a round starts or ends.
+- **Quality tiers** (`setQuality`): Low — DPR ≤1, no shadows, 8 sparks; Medium — DPR ≤1.5, 1024² shadow map; High — DPR ≤2, 2048² shadow map. Auto = Medium on coarse pointers, High otherwise. Tiers never change rules or visibility.
+- **Persistence** (`store.js`): `localStorage['arrowexodus.save.v1'] = { sum, payload }` with FNV-1a checksum; a corrupt or future-version document yields a fresh one; partial documents deep-merge defaults; an in-memory fallback keeps the session alive when storage is unavailable.
+- **Budgets**: one draw call per tile part (≈3–4 per piece, ≤80 pieces in extreme endless waves), a single instanced stud mesh, one particle mesh; no per-frame allocation in the tween or particle loops; `dt` capped at 50 ms.
+- **E2E driving** (`tests/e2e.mjs`): starts its own static server on an ephemeral port, launches headless Chrome, wraps `AXRules.createGame/applyCommand` read-only for synchronisation, projects board cells to screen coordinates by replicating `fitCamera`, and plays through real clicks, touches and key presses.
 
-- Produce fixed-camera captures for every quality tier, deterministic seed sweeps, no-post baselines, debug-view mosaics, and 10-minute temporal stability runs.
-- Profile CPU, GPU, memory, shader compilation, draw calls, triangles, texture memory, and garbage collection on representative desktop and mobile classes.
-- Verify effects cannot obscure legal targets, alter picking, leak resources, or continue expensive updates while hidden.
+## 14. Testing and acceptance criteria
 
-### Platform and network
+`npm test` → `tests/rules.test.mjs` (no dependencies) verifies: deterministic replay hash for Journey 1; win after the solver's order and `total = exitPoints + perfectBonus`; rejection of unknown piece, null command and blocked exit without mutation; all 40 Journey stages, 6 Challenges, 3 Practice presets and 14 consecutive dailies solvable; Score Chase reaches wave 12; all 6 lesson fixtures solvable; save migration deep-merges stats; serialize round-trip preserves the hash; tie-break order.
 
-- Test expired/rotated tokens, privacy settings, rate limits, offline start, reconnect at each game state, duplicate commands, out-of-order events, server restart, and version mismatch.
-- Verify achievement idempotency, leaderboard validation, friends-only filtering, cloud-save conflict handling, activity start/end pairing, and server-time countdown accuracy.
-- For hosted sessions, test disconnect/rejoin, abandonment, timeout, invitation expiry, result reconciliation, replay access, moderation controls, and authoritative cheat attempts.
+`npm run test:e2e` (Playwright + `/usr/bin/google-chrome`) at desktop 1280×800 and mobile 390×844 with touch: title visible → Play → Journey 1 cleared by clicking/tapping visible tiles → "Plate cleared!" → stars persisted; desktop additionally: Next stage → Esc pause/resume → Hint → exit/Undo/re-exit by keyboard → clear stage 2 by keyboard → Modes → Learn lesson 1 complete → Title → Settings change, Esc close, persistence across reload → seeded save boots Journey 12 solvable. Any page error or non-GPU console error fails the run.
 
-## 10. Definition of done and non-goals
+QA bar as checkable statements: every button on every screen is reachable by click, touch and Tab; no console errors or warnings on load or during play at both viewports; HUD, canvas and overlay buttons fully visible at 390×844 portrait and 844×390 landscape; a new player reaches the first launch within two inputs (Play, tap); every mechanic is introduced by an intro line or a Learn lesson before it appears; reduced motion, high contrast and large text survive reload.
 
-This specification is ready for implementation when rules examples, content schema, wireframes for all responsive breakpoints, visual target frames, accessibility annotations, authoritative message schema, achievement definitions, leaderboard definitions, and performance test devices are approved.
+## 15. Asset inventory
 
-This document does **not** authorize implementation, asset production, monetization work, native wrappers, real-money systems, or copying any existing product. The initial build should favor one excellent core loop and a coherent original visual identity over feature breadth.
+| Path | Purpose | Source | Status |
+|---|---|---|---|
+| `assets/key-art.webp` | Title-screen hero image (`#title-art`) | FLUX.2 klein, 1200×672, seed 2712 | generated in this pass, wired |
+| `assets/plate-cleared.webp` | Results illustration on wins and lesson completion | FLUX.2 klein, 640×400, seed 4101 | generated in this pass, wired |
+| `assets/no-lanes.webp` | Results illustration on lock-up | FLUX.2 klein, 640×400, seed 4102 | generated in this pass, wired |
+| `coverart.png` | Store cover 1200×675 (`cover=` in manifest) | FLUX.2 klein key art (seed 2712), scaled to 1200×675, 256-colour PNG 277 KB | replaced in this pass (previous file was a generic placeholder unrelated to the game) |
+| `icon.png`, `favicon.svg` | Launcher icon, tab icon (three enamel arrows) | hand-authored SVG | shipped |
+| `sfx/*.opus` ×13 | Event clips (§9) | MOSS-SFX v2.0 | shipped |
+| `sfx/time-warning.opus` | 10-second warning | MOSS-SFX | generated in this pass |
+| `vendor/three.module.min.js` | Renderer | Three.js | shipped |
+| 3D models / character animation | — | — | none needed: all geometry is procedural; no humanoid |
+
+## 16. Known limitations
+
+- No localization; English strings only.
+- Dailies derive the date from the device clock, not `/api/v1/time`; a wrong local clock plays a different day's plate.
+- The Modes screen text promises "asynchronous global and friends comparisons" for Score Chase, but only a local best exists; nothing is submitted anywhere.
+- The Modes screen has no direct button on the Title screen (reached via Journey/Profile → Back to Modes); **Begin Profile** on the Profile panel returns to the Title.
+- A level's `theme` field is content metadata only; the renderer always uses the Settings theme.
+- `server.js` does not refuse `tests/`, `tools/` or dotfiles.
+- Settings stored but without effect: `colorPalette`, `leftHanded`, `haptics`, `boardMirror`, `confirmExits`; the `voice` bus has no sources.
+- Time-outs end as terminal reason `resigned` (the controller resigns at the limit); only a command arriving after the limit yields `time-up`.
+- The tutorial's `t3` lesson text says the blocked tap "explains itself", but the only explanation is the shake, the caption (if captions are on) and the mistake counter.
+- No safe-area insets on notched phones; no gamepad; no screen-reader board model.
+- 7×7 tiles fall below the 44 px touch-target guideline on 390 px-wide phones; the keyboard path is not available on touch devices.
+
+**Design intent not yet implemented**: the nine required locales with a language switcher; StarHermit identity, cloud save, achievements and daily/score-chase leaderboards (the tie-break and command validation are ready); server-time daily boundary; a DOM board mirror for screen readers; safe-area padding.

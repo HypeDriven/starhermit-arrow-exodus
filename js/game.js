@@ -110,7 +110,7 @@ function startRound(baseCfg, ctx) {
   round = {
     cfg: cfg, ctx: ctx, state: state, history: [],
     startMs: performance.now(), pausedTotal: 0, pausedAt: null,
-    timerId: null, cursor: null, over: false, timedOut: false,
+    timerId: null, cursor: null, over: false, timedOut: false, warned: false,
     lesson: ctx.lesson || null, lessonCount: 0
   };
 
@@ -198,6 +198,11 @@ function startTimer() {
   round.timerId = setInterval(() => {
     if (!round || round.over) return;
     updateHud();
+    if (round.cfg.timeLimitSec && !round.warned && !round.state.terminal &&
+        round.cfg.timeLimitSec * 1000 - elapsedMs() <= 10000) {
+      round.warned = true; // one warning per round, 10 s before the limit
+      AXAudio.play('time-warning');
+    }
     if (round.cfg.timeLimitSec && !round.state.terminal &&
         elapsedMs() >= round.cfg.timeLimitSec * 1000) {
       round.timedOut = true;
@@ -565,11 +570,17 @@ function terminalHeadline(state) {
   }
 }
 
-function fillResults(overlay, headline, lines) {
+function fillResults(overlay, headline, lines, art) {
   overlay.innerHTML = '';
   const card = el('div', 'modal card');
   card.setAttribute('role', 'dialog');
   card.setAttribute('aria-modal', 'true');
+  if (art) { // decorative illustration; hidden if the asset fails to load
+    const img = el('img', 'result-art');
+    img.src = art; img.alt = '';
+    img.addEventListener('error', () => { img.style.display = 'none'; });
+    card.appendChild(img);
+  }
   card.appendChild(el('h2', null, headline));
   const dl = el('div', 'small');
   for (const [k, v] of lines) {
@@ -595,7 +606,10 @@ function overlayButton(row, action, label, primary) {
 function showResults(state) {
   if (!round) return;
   closeOverlays();
-  const row = fillResults($('results-overlay'), terminalHeadline(state), scoreBreakdown(state));
+  const won = !!(state.terminal && state.terminal.won);
+  const art = won ? '/assets/plate-cleared.webp'
+    : (state.terminal && state.terminal.reason === AXRules.TERMINAL.LOCKED ? '/assets/no-lanes.webp' : null);
+  const row = fillResults($('results-overlay'), terminalHeadline(state), scoreBreakdown(state), art);
   overlayButton(row, 'replay', 'Replay', true);
   if (round.ctx.kind === 'journey' && state.terminal && state.terminal.won &&
       round.ctx.index + 1 < AXContent.JOURNEY.length)
@@ -609,7 +623,7 @@ function showLessonComplete() {
   if (!round) return;
   closeOverlays();
   const row = fillResults($('results-overlay'), 'Lesson complete',
-    [[round.lesson.title, 'done']]);
+    [[round.lesson.title, 'done']], '/assets/plate-cleared.webp');
   const lessons = AXContent.tutorialLessons();
   if (round.ctx.index + 1 < lessons.length)
     overlayButton(row, 'next', 'Next lesson', true);

@@ -135,7 +135,12 @@
     'lose':      function () { blip(300, 0.5, 'sine', 0.16, 'effects', ctx.currentTime, 180); blip(200, 0.6, 'sine', 0.1, 'effects', ctx.currentTime + 0.15, 120); caption('round lost'); },
     'undo':      function () { blip(500, 0.08, 'triangle', 0.1, 'effects', ctx.currentTime, 380); caption('undo'); },
     'hint':      function () { blip(990, 0.12, 'sine', 0.1); blip(1320, 0.14, 'sine', 0.07, 'effects', ctx.currentTime + 0.07); caption('hint'); },
-    'star':      function () { blip(1568, 0.18, 'sine', 0.1); }
+    'star':      function () { blip(1568, 0.18, 'sine', 0.1); },
+    'time-warning': function () { // 10 s left on a timed plate: two low ticks
+      blip(330, 0.09, 'square', 0.08);
+      blip(330, 0.09, 'square', 0.08, 'effects', ctx.currentTime + 0.16);
+      caption('ten seconds left');
+    }
   };
 
   // ---------- authored samples: lazy fetch/decode/cache, synth fallback ----------
@@ -152,7 +157,8 @@
     'lose':       'round-lost',
     'undo':       'undo-swish',
     'hint':       'hint-sparkle',
-    'star':       'star-twinkle'
+    'star':       'star-twinkle',
+    'time-warning': 'time-warning'
   };
   var sampleCache = {}; // basename -> AudioBuffer | 'loading' | 'error'
 

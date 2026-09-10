@@ -1,0 +1,17 @@
+# Arrow Exodus — SFX manifest (canonical). One clip per line:
+# file | event id (AXAudio.play name, js/audio.js) | description of the sound | usage context
+# Clips: MOSS-SoundEffect v2.0, 48 kHz mono Opus 96 kbps VBR, loudness-normalised, 100 steps. All play on the effects bus.
+ui-tap.opus | ui | Short soft plastic button tap click, single gentle UI press on a matte panel | Every [data-action] button press (menus, HUD, overlays); fires before the action runs
+cursor-tick.opus | cursor | Very short light wooden tick, quiet cursor movement knock on a small block | Keyboard focus ring moved with the arrow keys during play
+arrow-launch.opus | launch | Fast airy whoosh of a small metal arrow released, thin zip through air with a bright metallic tail | A single-cell arrow exits the plate (rules 'exit' event, big=false)
+big-arrow-launch.opus | launch-big | Heavy deep whoosh of a large steel arrow launching, low air push with a weighty metal resonance | A two-cell big arrow exits the plate (rules 'exit' event, big=true)
+lane-blocked.opus | blocked | Dull metal rattle clunk of an arrow head knocking against a solid blocked barrier | Player taps an arrow whose lane is blocked (rules 'blocked' event, counted mistake)
+invalid-buzz.opus | invalid | Short low mechanical error buzz from a locked switch, two quick muted bursts | Rules rejected a command outright (ended round, unknown piece); never a counted mistake
+combo-chime.opus | combo | Bright rising glass chime ping, clean tuned streak bonus bell | Layered over launch when the exit combo reaches 2 or more
+new-plate.opus | wave | Metallic plate sliding into place and settling with a soft clank, workshop machinery | Score Chase: previous plate fully cleared, next wave dealt (rules 'wave' event)
+plate-cleared.opus | win | Cheerful short victory arpeggio of small bells, bright ascending success fanfare | Last arrow leaves a non-endless plate (rules 'win' event)
+round-lost.opus | lose | Low descending disappointed tone with a soft muted thud, gentle failure cue | Round ends without a win: no clear paths, time up, or resign (rules 'lose' event)
+undo-swish.opus | undo | Quick reverse paper swish, short rewind whoosh of a move being taken back | Undo restored the previous snapshot (modes with mechanics.undo)
+hint-sparkle.opus | hint | Gentle two-note sparkle glimmer, soft shimmer hint reveal on small bells | Hint ring shown on a solvable next arrow (modes with mechanics.hint)
+star-twinkle.opus | star | High delicate star twinkle bell, tiny crystalline ding | Achievement unlocked at results time; Learn lesson goal reached
+time-warning.opus | time-warning | Two short low mechanical ticks like a timer relay, urgent but soft | Timed plates: once, when 10 s remain on the limit
