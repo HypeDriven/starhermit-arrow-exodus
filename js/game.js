@@ -57,7 +57,9 @@ function renderAccountLine() {
 function showScreen(name) {
   currentScreen = name;
   document.querySelectorAll('.screen').forEach(s => {
-    s.style.display = s.getAttribute('data-screen') === name ? 'block' : 'none';
+    const on = s.getAttribute('data-screen') === name;
+    s.classList.toggle('active', on);
+    s.style.display = on ? '' : 'none';
   });
   window.scrollTo(0, 0);
 }

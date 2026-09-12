@@ -17,7 +17,8 @@ const PLATE_TOP = 0.55;       // y of the plate surface
 // world direction per facing: 0 up(-z) 1 right(+x) 2 down(+z) 3 left(-x)
 const DIRV = [new THREE.Vector3(0, 0, -1), new THREE.Vector3(1, 0, 0),
               new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0)];
-const DIR_ROTY = [Math.PI, Math.PI / 2, 0, -Math.PI / 2]; // arrow geo faces +z at rest
+// arrow geo tip points -z at rest (shape +y rotated by rotateX(-PI/2)), i.e. facing 0
+const DIR_ROTY = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
 
 // ---------- tiny deterministic tween manager (no per-frame allocation) ----------
 class Tweens {
@@ -72,7 +73,7 @@ function geoCache() {
   const g = {};
   g.arrow = new THREE.ExtrudeGeometry(arrowShape(0.62, 0.17, 0.085),
     { depth: 0.07, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 });
-  g.arrow.rotateX(-Math.PI / 2); // lie flat, tip toward +z
+  g.arrow.rotateX(-Math.PI / 2); // lie flat, tip toward -z (facing 0 / up)
   g.arrowBig = new THREE.ExtrudeGeometry(arrowShape(0.7, 0.2, 0.1),
     { depth: 0.07, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 });
   g.arrowBig.rotateX(-Math.PI / 2);
@@ -343,9 +344,9 @@ export function createRenderer(opts) {
   function fitCamera() {
     const aspect = host.clientWidth / Math.max(1, host.clientHeight);
     const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
-    const vFit = (boardDims.h * 0.62) / Math.tan(halfFov);
-    const hFit = (boardDims.w * 0.66) / (Math.tan(halfFov) * aspect);
-    const dist = Math.max(6.5, vFit, hFit) + 1.4;
+    const vFit = (boardDims.h * 0.56) / Math.tan(halfFov);
+    const hFit = (boardDims.w * 0.60) / (Math.tan(halfFov) * aspect);
+    const dist = Math.max(5.2, vFit, hFit) + 1.2;
     camBase.set(0, dist * 0.82, dist * 0.62);
     camTarget.set(0, 0.3, 0.3);
     camera.position.copy(camBase);
