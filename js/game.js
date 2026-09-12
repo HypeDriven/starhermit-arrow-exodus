@@ -7,6 +7,7 @@ const AXRules = window.AXRules;
 const AXContent = window.AXContent;
 const AXStore = window.AXStore;
 const AXRNG = window.AXRNG;
+const AXPlatform = window.AXPlatform;
 
 // ---------- module-level state ----------
 let renderer3d = null;      // three.js render handle (createRenderer result) or null if unavailable
@@ -35,6 +36,21 @@ function elapsedMs() {
   if (!round) return 0;
   const now = round.pausedAt != null ? round.pausedAt : performance.now();
   return Math.max(0, now - round.startMs - round.pausedTotal);
+}
+
+// ---------- account / sync status line (title screen) ----------
+function renderAccountLine() {
+  const line = $('account-line');
+  if (!line) return;
+  if (!AXPlatform.hosted) {
+    line.textContent = 'Offline — progress is stored on this device.';
+    return;
+  }
+  const name = AXPlatform.profile ? AXPlatform.profile.displayName : '…';
+  const syncTxt = AXPlatform.sync === 'synced' ? 'progress synced'
+    : AXPlatform.sync === 'saving' ? 'saving…'
+    : 'cloud sync unavailable';
+  line.textContent = 'Playing as ' + name + ' · ' + syncTxt;
 }
 
 // ---------- screens ----------
@@ -732,7 +748,7 @@ function onKeyDown(e) {
 }
 
 // ---------- init ----------
-function init() {
+async function init() {
   doc = AXStore.load();
   sessionId = AXRNG.hashString(String(Date.now()) + ':' + Math.random()).toString(36);
 
@@ -786,7 +802,28 @@ function init() {
   });
 
   fillPanels();
+  renderAccountLine();
   showScreen('title');
+
+  // StarHermit host adapter: identity, token refresh and the cloud save
+  // mirror. When a remote save exists it wins over the local cache;
+  // localStorage remains the offline fallback either way.
+  try {
+    const remoteRaw = await AXPlatform.init({
+      onProfile: renderAccountLine,
+      onSync: renderAccountLine
+    });
+    const remoteDoc = remoteRaw ? AXStore.loadRaw(remoteRaw) : null;
+    if (remoteDoc) {
+      doc = remoteDoc;
+      AXStore.save(doc); // local cache mirrors the remote doc
+      AXAudio.setCaptions(doc.settings.captions, showCaption);
+      AXAudio.applySettings(doc.settings);
+      document.body.classList.toggle('large-text', !!doc.settings.largeText);
+      document.body.classList.toggle('high-contrast', !!doc.settings.highContrast);
+      fillPanels();
+    }
+  } catch (e) { /* offline or no token: the local save is already loaded */ }
 }
 
 init();

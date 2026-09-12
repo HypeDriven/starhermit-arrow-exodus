@@ -230,12 +230,12 @@ Conventions per https://wiki.starhermit.com/.
 
 - **Manifest** `starhermit.txt`: `name=Arrow Exodus`, `launch=index.html`, `owner=<uuid>`, `server=server.js`, `version=1.0.0`, `contentVersion=1`, `cover=coverart.png`.
 - **Server script** `server.js`: serves the distribution and answers `GET /api/v1/time` with `{ now, utcDate }`. The client does not yet call it (dailies use the device clock, §16).
-- **Used**: nothing beyond packaging. No launch-token handshake, identity, presence, cloud save, leaderboards, achievements API, sessions, rooms or chat calls are made.
+- **Used**: `js/platform.js` (host adapter, classic script after `store.js`): reads `#game_token=<jwt>` from the fragment (query fallbacks for local dev, stripped after read), decodes `sub` + `game_scope` (slug never hard-coded), sends `Authorization: Bearer`, re-mints the token every 45 min via `POST /api/v1/games/{slug}/launch-token` (60 s retry on failure), fetches the display name from `GET /api/v1/users/{sub}/profile` (nickname, fallback `Player ` + id8; never `/api/v1/me`, never usernames), and mirrors the save document to the cloud slot `GET/PUT /api/v1/me/cloud-saves/{slug}` (stored-zip + base64, one slot). Remote save wins on load; localStorage stays the offline cache; saves debounce 2 s and flush on `pagehide`/hidden. Not used: leaderboards, achievements API, presence, sessions, rooms, chat. The title screen shows the account line (nickname + sync status).
 - **Local stand-ins**: achievements (9 stable keys: `first-exit`, `first-win`, `flawless`, `combo-8`, `journey-half`, `journey-done`, `daily-7`, `score-3000`, `exits-500`) unlock idempotently in `recordResult` and are stored in the save document; personal bests per Journey stage, Challenge, Daily date and Score Chase live in the same document. `store.js` carries a leaderboard tie-break (`sortEntries`: score desc, fewer mistakes, lower duration, session id) and a local board store that the UI does not yet read.
 
 ## 13. Technical architecture
 
-- **Load order** (`index.html`): ES module `render3d.js` (imports Three.js) exposes `window.AXRender`; classic scripts `rng.js`, `rules.js`, `content.js`, `store.js`, `audio.js` define UMD globals; then `game.js` is imported as a module and runs `init()`.
+- **Load order** (`index.html`): ES module `render3d.js` (imports Three.js) exposes `window.AXRender`; classic scripts `rng.js`, `rules.js`, `content.js`, `store.js`, `platform.js`, `audio.js` define UMD globals; then `game.js` is imported as a module and runs `init()`.
 - **rules.js** is browser/Node isomorphic and side-effect free; snapshots are cloned via JSON so `applyCommand` never mutates its input. `hashState` (stable-key JSON + FNV-1a) identifies a state minus its event list; `serialize`/`deserialize` gate on `STATE_VERSION`. `validateCommandShape` bounds command size (512 bytes) and id length for a future network boundary.
 - **Replay/determinism**: `createGame(cfg)` + ordered commands reproduce the state hash (`tests/rules.test.mjs`). Elapsed time enters only through quantized `atMs`.
 - **Controller** (`game.js`): `round` holds `cfg, ctx, state, history[], startMs, pausedTotal, pausedAt, timerId, cursor, over, timedOut, warned, lesson, lessonCount`; command ids `c<n>` are monotonic. Pause is implemented as clock accounting (`pausedTotal`), so the rules never see paused time.
@@ -271,7 +271,7 @@ QA bar as checkable statements: every button on every screen is reachable by cli
 
 - No localization; English strings only.
 - Dailies derive the date from the device clock, not `/api/v1/time`; a wrong local clock plays a different day's plate.
-- The Modes screen text promises "asynchronous global and friends comparisons" for Score Chase, but only a local best exists; nothing is submitted anywhere.
+- The Modes screen labels Score Chase as local-best only; no global/friends board exists and nothing is submitted anywhere.
 - The Modes screen has no direct button on the Title screen (reached via Journey/Profile → Back to Modes); **Begin Profile** on the Profile panel returns to the Title.
 - A level's `theme` field is content metadata only; the renderer always uses the Settings theme.
 - `server.js` does not refuse `tests/`, `tools/` or dotfiles.
@@ -281,4 +281,4 @@ QA bar as checkable statements: every button on every screen is reachable by cli
 - No safe-area insets on notched phones; no gamepad; no screen-reader board model.
 - 7×7 tiles fall below the 44 px touch-target guideline on 390 px-wide phones; the keyboard path is not available on touch devices.
 
-**Design intent not yet implemented**: the nine required locales with a language switcher; StarHermit identity, cloud save, achievements and daily/score-chase leaderboards (the tie-break and command validation are ready); server-time daily boundary; a DOM board mirror for screen readers; safe-area padding.
+**Design intent not yet implemented**: the nine required locales with a language switcher; StarHermit daily/score-chase leaderboards and server-side achievements (the tie-break and command validation are ready; achievements stay local inside the cloud-saved doc); server-time daily boundary; a DOM board mirror for screen readers; safe-area padding.

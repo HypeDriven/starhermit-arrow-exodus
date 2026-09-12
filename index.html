@@ -63,6 +63,7 @@ body.high-contrast .btn.primary{background:var(--accent);color:#000;}
     <h1 style="font-size:2rem;">Arrow Exodus</h1>
     <img id="title-art" src="/assets/key-art.webp" alt="" onerror="this.style.display='none'">
     <p class="muted small">Tap unobstructed arrows to send them off the board in their facing direction.</p>
+    <p id="account-line" class="muted small" aria-live="polite"></p>
     <div class="row"><button class="btn primary big" data-action="play">Play</button></div>
     <div class="row">
       <button class="btn" data-action="daily">Daily Challenge</button>
@@ -81,7 +82,7 @@ body.high-contrast .btn.primary{background:var(--accent);color:#000;}
       <li><button class="btn" data-action="daily-mode">Daily — one shared seed per UTC day.</button></li>
       <li><button class="btn" data-action="practice-info">Practice — selectable difficulty, undo where allowed.</button></li>
       <li><button class="btn" data-action="challenge-info">Challenge — constrained goals: move limits, speed targets, altered layouts.</button></li>
-      <li><button class="btn" data-action="score-chase-info">Score chase — asynchronous global and friends comparisons.</button></li>
+      <li><button class="btn" data-action="score-chase-info">Score chase — endless plates; your best is tracked (local).</button></li>
     </ul>
   </section>
 
@@ -144,6 +145,7 @@ if (typeof window.AXRNG === 'undefined') {} // UMD sets it via other scripts? no
 <script src="/js/rules.js"></script>
 <script src="/js/content.js"></script>
 <script src="/js/store.js"></script>
+<script src="/js/platform.js"></script>
 <script src="/js/audio.js"></script>
 <script type="module">
   window.AXGame = (await import('/js/game.js')).default;
