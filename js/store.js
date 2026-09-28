@@ -15,7 +15,8 @@
   var DEFAULT_SETTINGS = {
     music: 0.6, effects: 0.9, ambience: 0.5, voice: 0.8,
     muted: false, captions: false,
-    graphicsTier: 'auto',       // auto | low | medium | high
+    graphicsTier: 'auto',       // quality preset: auto | low | balanced | high | ultra ('medium' = balanced)
+    graphics: {},               // per-category overrides + render_scale, adaptive, show_fps (js/gfx.js)
     theme: 'foundry',
     reducedMotion: false,
     highContrast: false,

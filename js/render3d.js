@@ -9,6 +9,145 @@
  * 3 effects. Raycasts only hit layers 1–2.
  */
 import * as THREE from '../vendor/three.module.min.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { detectPreset, describe, resolve, SHADOW_MAP } from './gfx.js';
+
+// ---------- GPU probe (one throwaway context, cached) ----------
+let gpuCache = null;
+function isMobileDevice() {
+  try {
+    return (window.matchMedia && matchMedia('(pointer:coarse)').matches) ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  } catch (e) { return false; }
+}
+/** { gpu, detected } — the unmasked GPU name and the Auto preset it maps to. */
+export function gpuInfo() {
+  if (gpuCache) return gpuCache;
+  let gpu = '';
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      gpu = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+      const lose = gl.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();
+    }
+  } catch (e) { gpu = ''; }
+  gpuCache = { gpu, detected: detectPreset(gpu, { mobile: isMobileDevice() }) };
+  return gpuCache;
+}
+
+// Colour grade + vignette, applied in display space after OutputPass.
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uAmount: { value: 1.0 }, uVignette: { value: 0.26 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uAmount; uniform float uVignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 src = texture2D(tDiffuse, vUv);
+      vec3 c = clamp(src.rgb, 0.0, 1.0);
+      // Gentle S-curve contrast, a touch more saturation, warm highlights / cool shadows.
+      vec3 s = mix(c, c * c * (3.0 - 2.0 * c), 0.22);
+      float l = dot(s, vec3(0.299, 0.587, 0.114));
+      s = mix(vec3(l), s, 1.1);
+      s *= mix(vec3(0.95, 0.98, 1.05), vec3(1.04, 1.0, 0.95), smoothstep(0.15, 0.75, l));
+      c = mix(c, s, uAmount);
+      float d = length((vUv - 0.5) * vec2(1.0, 0.9));
+      c *= 1.0 - uVignette * smoothstep(0.3, 0.8, d);
+      gl_FragColor = vec4(c, src.a);
+    }`,
+};
+
+// ---------- procedural surface textures (deterministic value noise) ----------
+function hash2(x, y) {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function canvasTex(size, paint, srgb) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const img = g.createImageData(size, size);
+  paint(img.data, size);
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  return t;
+}
+function makeTextures() {
+  // brushed steel: long horizontal streaks, used as roughness + a faint colour modulation
+  const brushed = canvasTex(256, (d, n) => {
+    for (let y = 0; y < n; y++) {
+      const row = hash2(0, y) * 0.5 + hash2(1, y >> 1) * 0.3;
+      for (let x = 0; x < n; x++) {
+        const v = 0.72 + row * 0.22 + hash2(x >> 5, y) * 0.06;
+        const i = (y * n + x) * 4;
+        d[i] = d[i + 1] = d[i + 2] = Math.round(v * 255); d[i + 3] = 255;
+      }
+    }
+  }, false);
+  // fine grain for enamel / cell inlays (roughness variation only)
+  const grain = canvasTex(128, (d, n) => {
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const v = 0.8 + hash2(x + 7, y + 3) * 0.2;
+      const i = (y * n + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = Math.round(v * 255); d[i + 3] = 255;
+    }
+  }, false);
+  // workbench: pool of lamp light fading to the corners, with wood-like grain
+  const bench = canvasTex(512, (d, n) => {
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const u = x / n - 0.5, v = y / n - 0.5;
+      const r = Math.sqrt(u * u * 1.0 + v * v * 1.4);
+      const pool = 1 - Math.min(1, Math.max(0, (r - 0.05) / 0.42));
+      const streak = hash2(0, y >> 1) * 0.5 + hash2(x >> 6, y) * 0.5;
+      const val = (0.35 + 0.65 * pool * pool) * (0.86 + streak * 0.14);
+      const i = (y * n + x) * 4;
+      d[i] = Math.round(Math.min(1, val * 1.04) * 255);
+      d[i + 1] = Math.round(val * 255);
+      d[i + 2] = Math.round(val * 0.94 * 255);
+      d[i + 3] = 255;
+    }
+  }, true);
+  bench.wrapS = bench.wrapT = THREE.ClampToEdgeWrapping;
+  return { brushed, grain, bench };
+}
+
+// Rounded, bevelled tile slab (width along x, depth along z), base at y = 0.
+function roundedSlab(w, d, h, r, bevel) {
+  const s = new THREE.Shape();
+  const x0 = -w / 2 + bevel, x1 = w / 2 - bevel, z0 = -d / 2 + bevel, z1 = d / 2 - bevel;
+  const rr = Math.max(0.001, r - bevel);
+  s.moveTo(x0 + rr, z0);
+  s.lineTo(x1 - rr, z0); s.quadraticCurveTo(x1, z0, x1, z0 + rr);
+  s.lineTo(x1, z1 - rr); s.quadraticCurveTo(x1, z1, x1 - rr, z1);
+  s.lineTo(x0 + rr, z1); s.quadraticCurveTo(x0, z1, x0, z1 - rr);
+  s.lineTo(x0, z0 + rr); s.quadraticCurveTo(x0, z0, x0 + rr, z0);
+  const g = new THREE.ExtrudeGeometry(s, { depth: h - bevel * 2, bevelEnabled: true,
+    bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 4 });
+  g.rotateX(Math.PI / 2);           // extrude along -y
+  g.translate(0, h - bevel, 0);     // top face at y = h
+  g.computeBoundingBox();
+  const bb = g.boundingBox;
+  g.translate(0, -bb.min.y - h / 2, 0); // centre vertically like the old BoxGeometry
+  // planar UVs from x/z so grain textures map evenly
+  const p = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i) + 0.5, p.getZ(i) + 0.5);
+  return g;
+}
 
 const LAYER_ENV = 0, LAYER_GAME = 1, LAYER_SEL = 2, LAYER_FX = 3;
 const CELL = 1.06;            // world units per board cell
@@ -77,12 +216,12 @@ function geoCache() {
   g.arrowBig = new THREE.ExtrudeGeometry(arrowShape(0.7, 0.2, 0.1),
     { depth: 0.07, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 });
   g.arrowBig.rotateX(-Math.PI / 2);
-  g.tile = new THREE.BoxGeometry(0.92, 0.16, 0.92);
-  g.tileTop = new THREE.BoxGeometry(0.8, 0.06, 0.8);
-  g.tileBigH = new THREE.BoxGeometry(0.92 * 2 + 0.1, 0.16, 0.92);
-  g.tileBigHTop = new THREE.BoxGeometry(0.8 * 2 + 0.18, 0.06, 0.8);
-  g.tileBigV = new THREE.BoxGeometry(0.92, 0.16, 0.92 * 2 + 0.1);
-  g.tileBigVTop = new THREE.BoxGeometry(0.8, 0.06, 0.8 * 2 + 0.18);
+  g.tile = roundedSlab(0.92, 0.92, 0.16, 0.1, 0.025);
+  g.tileTop = roundedSlab(0.8, 0.8, 0.06, 0.08, 0.018);
+  g.tileBigH = roundedSlab(0.92 * 2 + 0.1, 0.92, 0.16, 0.1, 0.025);
+  g.tileBigHTop = roundedSlab(0.8 * 2 + 0.18, 0.8, 0.06, 0.08, 0.018);
+  g.tileBigV = roundedSlab(0.92, 0.92 * 2 + 0.1, 0.16, 0.1, 0.025);
+  g.tileBigVTop = roundedSlab(0.8, 0.8 * 2 + 0.18, 0.06, 0.08, 0.018);
   g.cell = new THREE.PlaneGeometry(0.96, 0.96);
   g.bolt = new THREE.CylinderGeometry(0.3, 0.34, 0.18, 6);
   g.boltSlot = new THREE.BoxGeometry(0.34, 0.05, 0.07);
@@ -112,6 +251,16 @@ class Particles {
     this.points.frustumCulled = false;
     scene.add(this.points);
     this.cursor = 0;
+    this.boost = 1;
+  }
+  // high: additive glowing sparks; boost > 1 pushes colours into the bloom range
+  setMode(high, boost) {
+    const m = this.points.material;
+    m.blending = high ? THREE.AdditiveBlending : THREE.NormalBlending;
+    m.size = high ? 0.085 : 0.07;
+    m.toneMapped = boost <= 1;
+    m.needsUpdate = true;
+    this.boost = boost;
   }
   burst(p, color, n, spread, up) {
     const c = new THREE.Color(color);
@@ -123,8 +272,10 @@ class Particles {
       this.vel[i * 3 + 1] = Math.random() * up + 0.8;
       this.vel[i * 3 + 2] = Math.sin(a) * r * 0.5;
       this.life[i] = 0.7 + Math.random() * 0.4;
-      this.col[i * 3] = c.r; this.col[i * 3 + 1] = c.g; this.col[i * 3 + 2] = c.b;
+      const b = this.boost * (0.7 + Math.random() * 0.6);
+      this.col[i * 3] = c.r * b; this.col[i * 3 + 1] = c.g * b; this.col[i * 3 + 2] = c.b * b;
     }
+    this.points.geometry.attributes.color.needsUpdate = true;
   }
   tick(dt) {
     let any = false;
@@ -151,12 +302,35 @@ export function createRenderer(opts) {
   const geos = geoCache();
   const mats = {}; // theme materials, rebuilt on setTheme
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  host.appendChild(renderer.domElement);
+  const texs = makeTextures();
+  const gpu = gpuInfo();
+  let q = resolve(opts.graphics || {}, gpu.detected); // resolved graphics settings
+  let renderer = null;      // WebGLRenderer; recreated only when canvas MSAA must toggle
+  let canvasAA = null;
+  let composer = null, postKey = null, postFailed = false;
+  let envRT = null;         // PMREM RoomEnvironment render target (reflections)
+  let size = [0, 0], pixelRatio = 1, adaptiveScale = 1, frames = [], fps = 0;
+
+  function makeGL() {
+    const aa = !q.post && q.antialias === 'msaa';
+    if (renderer && aa === canvasAA) return;
+    const old = renderer;
+    renderer = new THREE.WebGLRenderer({ antialias: aa, powerPreference: 'high-performance' });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    canvasAA = aa;
+    if (old) {
+      if (composer) { composer.dispose(); composer = null; }
+      postKey = null;
+      if (envRT) { envRT.dispose(); envRT = null; }
+      if (keyLight.shadow.map) { keyLight.shadow.map.dispose(); keyLight.shadow.map = null; }
+      host.replaceChild(renderer.domElement, old.domElement);
+      old.dispose();
+      size = [0, 0];
+    } else host.appendChild(renderer.domElement);
+  }
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
@@ -192,9 +366,37 @@ export function createRenderer(opts) {
   const fillLight = new THREE.HemisphereLight(0xfff0dd, 0x1a2028, 0.55);
   const rimLight = new THREE.DirectionalLight(0xffdcb0, 0.5);
   rimLight.position.set(-5, 4, -4);
-  scene.add(keyLight, fillLight, rimLight);
+  scene.add(keyLight, fillLight, rimLight, keyLight.target);
 
   const particles = new Particles(scene, 400);
+
+  // drifting dust motes in the lamp light ('background: animated'; off with reduced motion)
+  const MOTES = 70;
+  const motePos = new Float32Array(MOTES * 3), moteSeed = new Float32Array(MOTES * 3);
+  for (let i = 0; i < MOTES; i++) {
+    moteSeed[i * 3] = hash2(i, 1); moteSeed[i * 3 + 1] = hash2(i, 2); moteSeed[i * 3 + 2] = hash2(i, 3);
+  }
+  const moteGeo = new THREE.BufferGeometry();
+  moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+  const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
+    color: 0xffe2b8, size: 0.028, transparent: true, opacity: 0.28, depthWrite: false,
+    blending: THREE.AdditiveBlending, sizeAttenuation: true
+  }));
+  motes.layers.set(LAYER_FX);
+  motes.frustumCulled = false;
+  motes.visible = false;
+  scene.add(motes);
+  function tickMotes(t) {
+    const W = boardDims.w + 2, H = boardDims.h + 2;
+    for (let i = 0; i < MOTES; i++) {
+      const a = moteSeed[i * 3], b = moteSeed[i * 3 + 1], c = moteSeed[i * 3 + 2];
+      const rise = ((t * (0.04 + c * 0.05) + b) % 1);
+      motePos[i * 3] = (a - 0.5) * W + Math.sin(t * 0.3 + c * 20) * 0.35;
+      motePos[i * 3 + 1] = PLATE_TOP + 0.3 + rise * 2.4;
+      motePos[i * 3 + 2] = (b - 0.5) * H + Math.cos(t * 0.25 + a * 20) * 0.35;
+    }
+    moteGeo.attributes.position.needsUpdate = true;
+  }
 
   // state mirrors
   let pieceMeshes = new Map();  // pieceId -> {group, cells, d, big, baseY}
@@ -204,7 +406,6 @@ export function createRenderer(opts) {
   let curState = null;
   let hintMeshes = [];
   let boardDims = { w: 6, h: 6 };
-  let quality = 'medium';
   let reducedMotion = false;
   let disposed = false;
 
@@ -214,25 +415,55 @@ export function createRenderer(opts) {
   function themeById(id) {
     return Content.THEMES.find(t => t.id === id) || Content.THEMES[0];
   }
+  let themeId = null;
   function setTheme(id) {
     const th = themeById(id);
+    themeId = th.id;
     const p = th.palette;
     scene.background = new THREE.Color(p.fog);
     scene.fog = null;
     keyLight.color.set(p.light);
     rimLight.color.set(p.accent);
-    for (const m of Object.values(mats)) m.dispose && m.dispose();
-    mats.plate = new THREE.MeshStandardMaterial({ color: p.plate, roughness: 0.45, metalness: 0.75 });
-    mats.plateEdge = new THREE.MeshStandardMaterial({ color: p.plateEdge, roughness: 0.6, metalness: 0.6 });
-    mats.cell = new THREE.MeshStandardMaterial({ color: p.cell, roughness: 0.7, metalness: 0.5 });
-    mats.floor = new THREE.MeshStandardMaterial({ color: p.floor, roughness: 0.95 });
-    mats.enamel = new THREE.MeshStandardMaterial({ color: p.enamel, roughness: 0.3, metalness: 0.05 });
-    mats.enamel2 = new THREE.MeshStandardMaterial({ color: p.enamel2, roughness: 0.3, metalness: 0.05 });
-    mats.bolt = new THREE.MeshStandardMaterial({ color: p.bolt, roughness: 0.35, metalness: 0.85 });
-    mats.tile = new THREE.MeshStandardMaterial({ color: p.plateEdge, roughness: 0.5, metalness: 0.7 });
-    mats.freeGlow = new THREE.MeshBasicMaterial({ color: p.accent, transparent: true, opacity: 0.9 });
+    buildMaterials(p);
     buildEnv(p);
     if (curState) buildBoard(curState); // rebuild with new materials
+  }
+
+  // Materials depend on the theme palette and on the 'detail' / 'reflections' / 'bloom' tiers.
+  function buildMaterials(p) {
+    for (const m of Object.values(mats)) m.dispose && m.dispose();
+    const det = q.detail === 'detailed';
+    const env = q.reflections === 'on';
+    const std = (o, envI) => {
+      const m = new THREE.MeshStandardMaterial(o);
+      m.envMapIntensity = envI;
+      return m;
+    };
+    mats.plate = std({ color: p.plate, roughness: det ? 0.5 : 0.45, metalness: 0.75,
+      roughnessMap: det ? texs.brushed : null, map: det ? texs.brushed : null }, 0.55);
+    if (det) { mats.plate.color.multiplyScalar(1.15); }
+    mats.plateEdge = std({ color: p.plateEdge, roughness: 0.6, metalness: 0.6,
+      roughnessMap: det ? texs.brushed : null }, 0.5);
+    mats.cell = std({ color: p.cell, roughness: 0.7, metalness: 0.5, roughnessMap: det ? texs.grain : null }, 0.4);
+    mats.floor = std({ color: det ? new THREE.Color(p.floor).multiplyScalar(1.5) : p.floor, roughness: 0.95,
+      map: det ? texs.bench : null }, 0.35);
+    const enamel = (c) => det
+      ? Object.assign(new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.34, metalness: 0.05,
+          clearcoat: 0.8, clearcoatRoughness: 0.18, roughnessMap: texs.grain }), { envMapIntensity: 0.22 })
+      : std({ color: c, roughness: 0.3, metalness: 0.05 }, 0.3);
+    mats.enamel = enamel(p.enamel);
+    mats.enamel2 = enamel(p.enamel2);
+    mats.bolt = std({ color: p.bolt, roughness: 0.35, metalness: 0.85, roughnessMap: det ? texs.brushed : null }, 0.6);
+    mats.tile = std({ color: p.plateEdge, roughness: 0.5, metalness: 0.7 }, 0.5);
+    // chevrons stay dark against the enamel so direction always reads first
+    mats.chevron = std({ color: env ? 0x0d0f12 : p.plateEdge,
+      roughness: env ? 0.4 : 0.5, metalness: env ? 0.6 : 0.7 }, 0.25);
+    mats.freeGlow = new THREE.MeshBasicMaterial({ color: p.accent, transparent: true, opacity: 0.9 });
+    if (q.bloom === 'on') { // HDR so only the free markers and sparks cross the bloom threshold
+      mats.freeGlow.color.multiplyScalar(5);
+      mats.freeGlow.toneMapped = false;
+    }
+    particles.setMode(q.particles === 'high', q.bloom === 'on' ? 4 : 1);
   }
 
   // ---------- environment (deterministic decor from decor stream) ----------
@@ -338,6 +569,7 @@ export function createRenderer(opts) {
 
     fitCamera();
     buildEnv(themeById(settings.theme).palette);
+    fitShadow();
     renderer.compile(scene, camera);
   }
 
@@ -370,12 +602,12 @@ export function createRenderer(opts) {
     const top = new THREE.Mesh(big ? (horiz ? geos.tileBigHTop : geos.tileBigVTop) : geos.tileTop,
       big ? mats.enamel2 : mats.enamel);
     top.position.y = 0.17;
-    const arrow = new THREE.Mesh(big ? geos.arrowBig : geos.arrow, mats.tile);
+    const arrow = new THREE.Mesh(big ? geos.arrowBig : geos.arrow, mats.chevron);
     arrow.position.y = 0.2;
     arrow.rotation.y = DIR_ROTY[piece.d];
     grp.add(tile, top, arrow);
     if (big) { // second chevron reinforces the span
-      const arrow2 = new THREE.Mesh(geos.arrowBig, mats.tile);
+      const arrow2 = new THREE.Mesh(geos.arrowBig, mats.chevron);
       arrow2.position.y = 0.2;
       arrow2.rotation.y = DIR_ROTY[piece.d];
       const off = DIRV[piece.d].clone().multiplyScalar(-0.5);
@@ -447,7 +679,7 @@ export function createRenderer(opts) {
               onDone: () => pieceGroup.remove(e.group)
             });
             const edgeP = start.clone().addScaledVector(dir, boardDims.w * 0.4);
-            particles.burst(edgeP, themeById(settings.theme).palette.accent, quality === 'low' ? 8 : 18, 1.2, 1.4);
+            particles.burst(edgeP, themeById(settings.theme).palette.accent, q.particles === 'low' ? 8 : 18, 1.2, 1.4);
           }
           if (!reducedMotion) camShake = Math.max(camShake, ev.big ? 0.08 : 0.04);
         }
@@ -483,7 +715,7 @@ export function createRenderer(opts) {
         }
         if (!reducedMotion) camShake = Math.max(camShake, 0.06);
       } else if (ev.type === 'win') {
-        particles.burst(new THREE.Vector3(0, 1.4, 0), 0xffd070, quality === 'low' ? 30 : 90, 3.4, 2.8);
+        particles.burst(new THREE.Vector3(0, 1.4, 0), 0xffd070, q.particles === 'low' ? 30 : 90, 3.4, 2.8);
         if (!reducedMotion) camShake = Math.max(camShake, 0.12);
       } else if (ev.type === 'lose') {
         if (!reducedMotion) camShake = Math.max(camShake, 0.15);
@@ -577,55 +809,195 @@ export function createRenderer(opts) {
     return { x: (v.x + 1) / 2 * rect.width + rect.left, y: (1 - v.y) / 2 * rect.height + rect.top };
   }
 
-  // ---------- quality ----------
-  function setQuality(tier) {
-    quality = tier;
-    const dpr = window.devicePixelRatio || 1;
-    if (tier === 'low') {
-      renderer.setPixelRatio(Math.min(dpr, 1));
-      renderer.shadowMap.enabled = false;
-      keyLight.castShadow = false;
-    } else if (tier === 'medium') {
-      renderer.setPixelRatio(Math.min(dpr, 1.5));
-      renderer.shadowMap.enabled = true;
-      keyLight.castShadow = true;
-      keyLight.shadow.mapSize.set(1024, 1024);
-      keyLight.shadow.map && keyLight.shadow.map.dispose();
-      keyLight.shadow.map = null;
-    } else {
-      renderer.setPixelRatio(Math.min(dpr, 2));
-      renderer.shadowMap.enabled = true;
-      keyLight.castShadow = true;
-      keyLight.shadow.mapSize.set(2048, 2048);
-      keyLight.shadow.map && keyLight.shadow.map.dispose();
-      keyLight.shadow.map = null;
+  // ---------- graphics settings ----------
+  // Shadow box fitted tightly around the plate and the decor beside it.
+  const _v = new THREE.Vector3();
+  function fitShadow() {
+    const cam = keyLight.shadow.camera;
+    keyLight.target.position.set(0, 0, 0);
+    keyLight.target.updateMatrixWorld();
+    keyLight.updateMatrixWorld();
+    const view = new THREE.Matrix4().lookAt(keyLight.position, keyLight.target.position, new THREE.Vector3(0, 1, 0));
+    view.setPosition(keyLight.position).invert();
+    const hx = boardDims.w / 2 + 3.2, hz = boardDims.h / 2 + 2.2;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const x of [-hx, hx]) for (const y of [0, 2.2]) for (const z of [-hz, hz]) {
+      _v.set(x, y, z).applyMatrix4(view);
+      minX = Math.min(minX, _v.x); maxX = Math.max(maxX, _v.x);
+      minY = Math.min(minY, _v.y); maxY = Math.max(maxY, _v.y);
+      minZ = Math.min(minZ, _v.z); maxZ = Math.max(maxZ, _v.z);
     }
-    resize();
+    Object.assign(cam, { left: minX, right: maxX, top: maxY, bottom: minY, near: Math.max(0.1, -maxZ - 1), far: -minZ + 1 });
+    cam.updateProjectionMatrix();
+    keyLight.shadow.bias = -0.0006;
+    keyLight.shadow.normalBias = 0.02;
   }
 
-  function setReducedMotion(on) { reducedMotion = !!on; }
+  function applyEnvironment() {
+    if (q.reflections === 'on') {
+      if (!envRT) {
+        const pm = new THREE.PMREMGenerator(renderer);
+        const room = new RoomEnvironment(renderer);
+        envRT = pm.fromScene(room, 0.04);
+        room.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+        pm.dispose();
+      }
+      scene.environment = envRT.texture;
+      fillLight.intensity = 0.2;   // IBL supplies most of the fill
+    } else {
+      scene.environment = null;
+      fillLight.intensity = 0.55;
+    }
+  }
+
+  /** Apply graphics settings live: { preset, render_scale, adaptive, show_fps, <category> }. */
+  function setGraphics(saved) {
+    q = resolve(saved || {}, gpu.detected);
+    makeGL();
+    const sm = SHADOW_MAP[q.shadows];
+    renderer.shadowMap.enabled = sm > 0;
+    keyLight.castShadow = sm > 0;
+    if (sm > 0 && keyLight.shadow.mapSize.x !== sm) {
+      keyLight.shadow.mapSize.set(sm, sm);
+      if (keyLight.shadow.map) { keyLight.shadow.map.dispose(); keyLight.shadow.map = null; }
+    }
+    applyEnvironment();
+    // materials pick up detail / env / shadow changes: rebuild them and the board
+    if (themeId) setTheme(themeId);
+    for (const m of Object.values(mats)) m.needsUpdate = true;
+    applyMotion();
+    adaptiveScale = 1;
+    frames = [];
+    postKey = null;           // rebuild the post chain on the next frame
+    postFailed = false;
+    fpsVisible(q.showFps);
+    size = [0, 0];            // force a resize with the new pixel ratio
+  }
+
+  function applyMotion() {
+    motes.visible = q.background === 'animated' && !reducedMotion;
+  }
+
+  function fpsVisible(on) {
+    let el = document.getElementById('fps-meter');
+    if (on && !el) {
+      el = document.createElement('div');
+      el.id = 'fps-meter';
+      el.setAttribute('aria-hidden', 'true');
+      el.textContent = '… fps';
+      document.body.appendChild(el);
+    }
+    if (el) el.hidden = !on;
+  }
+
+  function buildPost(w, h) {
+    if (composer) { composer.dispose(); composer = null; }
+    if (!q.post || postFailed) return;
+    try {
+      const pr = pixelRatio;
+      const target = new THREE.WebGLRenderTarget(w * pr, h * pr, {
+        type: THREE.HalfFloatType, samples: q.antialias === 'msaa' ? 4 : 0,
+      });
+      const c = new EffectComposer(renderer, target);
+      c.setPixelRatio(pr);
+      c.setSize(w, h);
+      c.addPass(new RenderPass(scene, camera));
+      if (q.ao !== 'off') {
+        const ao = new GTAOPass(scene, camera, w * pr, h * pr);
+        ao.output = GTAOPass.OUTPUT.Default;
+        ao.blendIntensity = 0.7;
+        ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: q.ao === 'high' ? 16 : 8 });
+        ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: q.ao === 'high' ? 6 : 4, rings: 2, samples: q.ao === 'high' ? 16 : 8 });
+        c.addPass(ao);
+      }
+      // high threshold: only the HDR free markers, sparks and specular glints bloom
+      if (q.bloom === 'on') c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.45, 0.35, 1.6));
+      c.addPass(new OutputPass());
+      if (q.grade === 'on') c.addPass(new ShaderPass(GradeShader));
+      if (q.antialias === 'smaa') c.addPass(new SMAAPass(w * pr, h * pr));
+      if (q.antialias === 'fxaa') {
+        const fxaa = new ShaderPass(FXAAShader);
+        fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
+        c.addPass(fxaa);
+      }
+      composer = c;
+    } catch (e) {
+      // post-processing is an enhancement: render directly and let the panel say so
+      postFailed = true;
+      composer = null;
+    }
+  }
+
+  // Adaptive resolution: ~90-frame average; step down when slow, back up when fast.
+  function adapt(dtMs) {
+    frames.push(dtMs);
+    if (frames.length < 90) return false;
+    const avg = frames.reduce((a, b) => a + b, 0) / frames.length;
+    frames.length = 0;
+    fps = 1000 / avg;
+    const el = document.getElementById('fps-meter');
+    if (el && !el.hidden) el.textContent = Math.round(fps) + ' fps · ' + (Math.round(pixelRatio * 100) / 100) + '×';
+    if (!q.adaptive) return false;
+    const before = adaptiveScale;
+    if (avg > 26) adaptiveScale = Math.max(0.6, adaptiveScale - 0.1);
+    else if (avg < 14 && adaptiveScale < 1) adaptiveScale = Math.min(1, adaptiveScale + 0.05);
+    return before !== adaptiveScale;
+  }
+
+  function graphicsInfo() {
+    return {
+      gpu: gpu.gpu || 'unknown GPU', detected: gpu.detected, resolved: q,
+      summary: describe(q, [Math.round(size[0] * pixelRatio), Math.round(size[1] * pixelRatio)]),
+      fps: Math.round(fps), adaptiveScale: Math.round(adaptiveScale * 100) / 100, postFailed,
+    };
+  }
+
+  function setReducedMotion(on) { reducedMotion = !!on; applyMotion(); }
   function setParallax(x, y) { parallax.x = x; parallax.y = y; }
 
   function resize() {
     const w = host.clientWidth, h = host.clientHeight;
     if (!w || !h) return;
-    renderer.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     fitCamera();
   }
 
+  function applySize() {
+    const w = host.clientWidth, h = host.clientHeight;
+    if (!w || !h) return;
+    const ratio = Math.min(window.devicePixelRatio || 1, q.maxDpr) * q.scale * adaptiveScale;
+    if (w !== size[0] || h !== size[1] || ratio !== pixelRatio) {
+      size = [w, h];
+      pixelRatio = ratio;
+      renderer.setPixelRatio(ratio);
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    const key = q.post && !postFailed ? [q.ao, q.bloom, q.grade, q.antialias, w, h, pixelRatio].join('|') : 'none';
+    if (key !== postKey) { postKey = key; buildPost(w, h); }
+  }
+
   // ---------- frame loop ----------
   let last = 0;
   let running = true;
+  let clockT = 0;
+  const keyBase = 2.6;
   function frame(t) {
     if (disposed) return;
     requestAnimationFrame(frame);
     if (!running) { last = t; return; }
-    const dt = Math.min(0.05, last ? (t - last) / 1000 : 0.016);
+    const rawDt = last ? t - last : 16;
+    const dt = Math.min(0.05, rawDt / 1000);
     last = t;
+    if (adapt(Math.min(250, rawDt))) size = [0, 0];
     tweens.tick(dt);
     particles.tick(dt);
+    // ambient life: dust motes and a faint lamp shimmer (static under reduced motion)
+    if (motes.visible) { clockT += dt; tickMotes(clockT); }
+    keyLight.intensity = motes.visible
+      ? keyBase * (1 + Math.sin(clockT * 1.3) * 0.02 + Math.sin(clockT * 3.7) * 0.01) : keyBase;
     // free-marker gentle pulse (cosmetic; amplitude never alters picking)
     const pulse = reducedMotion ? 1 : 1 + Math.sin(t / 350) * 0.12;
     for (const [, dot] of freeDots) dot.scale.setScalar(pulse);
@@ -640,7 +1012,11 @@ export function createRenderer(opts) {
     } else camShake = Math.max(0, camShake - dt * 0.5);
     camera.position.set(camBase.x + px + sx, camBase.y + py + sy, camBase.z);
     camera.lookAt(camTarget);
-    renderer.render(scene, camera);
+    applySize();
+    if (composer) {
+      try { composer.render(dt); }
+      catch (e) { postFailed = true; composer.dispose(); composer = null; renderer.render(scene, camera); }
+    } else renderer.render(scene, camera);
   }
 
   function setRunning(on) { running = !!on; }
@@ -649,16 +1025,20 @@ export function createRenderer(opts) {
 
   function dispose() {
     disposed = true;
+    if (composer) composer.dispose();
+    if (envRT) envRT.dispose();
+    for (const t of Object.values(texs)) t.dispose();
+    moteGeo.dispose(); motes.material.dispose(); particles.points.geometry.dispose(); particles.points.material.dispose();
+    const fm = document.getElementById('fps-meter');
+    if (fm) fm.hidden = true;
     renderer.dispose();
     for (const g of Object.values(geos)) g.dispose();
     for (const m of Object.values(mats)) m.dispose && m.dispose();
     host.removeChild(renderer.domElement);
   }
 
+  setGraphics(opts.graphics || {});
   setTheme(settings.theme || 'foundry');
-  setQuality(settings.graphicsTier === 'auto'
-    ? ((window.matchMedia && matchMedia('(pointer:coarse)').matches) ? 'medium' : 'high')
-    : settings.graphicsTier);
   resize();
   requestAnimationFrame(frame);
 
@@ -666,9 +1046,9 @@ export function createRenderer(opts) {
     buildBoard, syncState, skipAll, isBusy,
     pickPiece, screenPosOfPiece, setCursor,
     setHint, clearHint,
-    setTheme, setQuality, setReducedMotion, setParallax,
+    setTheme, setGraphics, graphicsInfo, setReducedMotion, setParallax,
     resize, dispose, setRunning,
-    get quality() { return quality; }
+    get quality() { return q.preset; }
   };
 }
 

@@ -75,6 +75,8 @@
   .menu-title{font-size:clamp(2.1rem,10vw,3rem);}
   .menu-secondary{grid-template-columns:1fr 1fr;}
 }
+/* Graphics → Ambient motion: Static also stills the title key-art drift */
+body.gfx-bg-static .menu-bg img{animation:none;}
 @media (prefers-reduced-motion:reduce){
   .menu-bg img,.menu-hero-fallback{animation:none;}
 }

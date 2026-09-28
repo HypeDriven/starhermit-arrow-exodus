@@ -6,7 +6,7 @@
 <title>Arrow Exodus</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="/css/menu.css">
-<script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js" } }</script>
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js", "three/addons/": "/vendor/addons/" } }</script>
 <style>
 :root{
   --bg:#0f1216; --panel:#1a1e24; --panel2:#232830; --line:#39414d;
@@ -43,6 +43,18 @@ a{color:var(--accent);}
 .set-row select{min-height:36px;font-size:1rem;background:var(--panel2);color:var(--text);border:1px solid var(--line);}
 #title-art{display:block;width:100%;max-width:640px;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin:0 0 14px;background:#0c0f13;}
 .result-art{display:block;width:100%;max-height:150px;object-fit:cover;border-radius:8px;margin:0 0 10px;background:#0c0f13;}
+.gfx-section{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);}
+.gfx-section h3{font-size:1.1rem;margin:0 0 4px;color:var(--accent);}
+.gfx-section .set-row label{flex:1 1 auto;min-width:0;}
+.gfx-section select{max-width:58%;}
+.gfx-scale-wrap{display:flex;align-items:center;gap:8px;flex:0 1 210px;min-width:140px;}
+.gfx-section .gfx-scale-wrap input[type=range]{flex:1 1 auto;min-width:80px;}
+.gfx-scale-val{min-width:3.2em;text-align:right;}
+.gfx-summary{margin:8px 0 0;overflow-wrap:anywhere;}
+.gfx-note{margin:6px 0 0;color:var(--accent);}
+.set-row input[type=checkbox]{width:22px;height:22px;flex:none;}
+.set-row select:focus-visible,.set-row input:focus-visible{outline:3px solid var(--accent2);outline-offset:2px;}
+#fps-meter{position:fixed;top:6px;right:8px;z-index:40;padding:2px 8px;border-radius:6px;background:rgba(8,10,13,.72);color:var(--accent2);font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;pointer-events:none;}
 #caption-line{min-height:1.4em;margin:4px 0 0;text-align:center;color:var(--accent2);}
 body.large-text{font-size:19px;}
 body.high-contrast{--bg:#000000;--panel:#0a0a0a;--panel2:#141414;--line:#9a9a9a;

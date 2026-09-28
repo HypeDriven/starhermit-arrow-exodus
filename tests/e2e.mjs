@@ -188,7 +188,8 @@ async function runPass(browser, name, ctxOpts, { full }) {
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !browserNoise.test(m.text())) errors.push(`console: ${m.text()}`);
+    if ((m.type() === 'error' || m.type() === 'warning') && !browserNoise.test(m.text()))
+      errors.push(`console ${m.type()}: ${m.text()}`);
   });
 
   await page.goto(await BASE_URL, { waitUntil: 'load' });
@@ -337,8 +338,74 @@ async function runPass(browser, name, ctxOpts, { full }) {
     ok(`${name}: Journey 12 (previously ungenerable) boots, renders, is solvable`);
   }
 
+  await graphicsPass(page, name);
+
   await context.close();
   if (errors.length) throw new Error(`${name} pass had page errors:\n  ${errors.join('\n  ')}`);
+}
+
+// ---------- graphics settings through the visible Settings dialog ----------
+async function graphicsPass(page, name) {
+  const saved = () => page.evaluate(() => {
+    const d = JSON.parse(JSON.parse(localStorage.getItem('arrowexodus.save.v1')).payload);
+    return { tier: d.settings.graphicsTier, g: d.settings.graphics || {} };
+  });
+  const bodyPreset = () => page.evaluate(() => document.body.dataset.gfxPreset);
+  await page.reload({ waitUntil: 'load' });
+  await installProbe(page);
+  await page.waitForSelector('[data-screen="title"]', { state: 'visible' });
+  await page.click('[data-action="settings"]');
+  await overlayVisible(page, 'settings-overlay');
+  await page.locator('#gfx-section').scrollIntoViewIfNeeded();
+  if (!(await page.isVisible('#gfx-title'))) throw new Error('Graphics section not visible');
+  // headless Chrome uses SwiftShader, so Auto must resolve to Low
+  if ((await page.inputValue('#set-tier')) !== 'auto' && (await saved()).tier === 'auto')
+    throw new Error('quality select does not start at Auto');
+  await page.selectOption('#set-tier', 'low');
+  if ((await bodyPreset()) !== 'low') throw new Error('preset Low not applied');
+  await page.selectOption('#set-tier', 'high');
+  if ((await bodyPreset()) !== 'high') throw new Error('preset High not applied');
+  const sum = await page.textContent('#gfx-summary');
+  if (!/px/.test(sum) || !/SMAA/.test(sum)) throw new Error(`unexpected summary "${sum}"`);
+  await page.selectOption('#gfx-bloom', 'off');
+  if ((await saved()).g.bloom !== 'off') throw new Error('bloom override not saved');
+  await page.selectOption('#set-tier', 'ultra'); // choosing a preset clears overrides
+  if ((await page.inputValue('#gfx-bloom')) !== 'preset' || 'bloom' in (await saved()).g)
+    throw new Error('preset did not clear overrides');
+  await page.selectOption('#gfx-shadows', 'low');
+  await page.locator('#gfx-fps').check();
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('settings-overlay').style.display === 'none');
+  ok(`${name}: graphics presets Low/High/Ultra + override applied from the Settings dialog`);
+
+  await page.reload({ waitUntil: 'load' });
+  await installProbe(page);
+  await page.waitForSelector('[data-screen="title"]', { state: 'visible' });
+  if ((await bodyPreset()) !== 'ultra') throw new Error('graphics preset lost after reload');
+  await page.click('[data-action="settings"]');
+  await overlayVisible(page, 'settings-overlay');
+  if ((await page.inputValue('#set-tier')) !== 'ultra' || (await page.inputValue('#gfx-shadows')) !== 'low')
+    throw new Error('graphics controls lost after reload');
+  await page.keyboard.press('Escape');
+  ok(`${name}: graphics settings survive reload`);
+
+  // play at Ultra, then switch to Low live from the pause menu
+  await page.click('[data-action="play"]');
+  await page.waitForFunction(() => !!window.__axProbe?.state && document.querySelector('#canvas-host canvas'));
+  await page.waitForTimeout(1500);
+  if (!(await page.isVisible('#fps-meter'))) throw new Error('frame-rate readout missing');
+  await page.click('[data-action="pause"]');
+  await overlayVisible(page, 'pause-overlay');
+  await page.click('#pause-overlay [data-action="settings"]');
+  await overlayVisible(page, 'settings-overlay');
+  await page.selectOption('#set-tier', 'low');
+  await page.waitForTimeout(800);
+  if ((await bodyPreset()) !== 'low') throw new Error('live switch to Low failed');
+  await page.selectOption('#set-tier', 'auto');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(500);
+  if (!(await page.$('#canvas-host canvas'))) throw new Error('canvas lost after live graphics switch');
+  ok(`${name}: live Ultra → Low switch in play, renders with no console output`);
 }
 
 // ---------- main ----------
@@ -350,7 +417,7 @@ let browser = null;
 try {
   browser = await chromium.launch({
     executablePath: '/usr/bin/google-chrome',
-    args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
+    args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
   await runPass(browser, 'mobile',

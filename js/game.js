@@ -1,6 +1,8 @@
 /* Arrow Exodus — game controller: wires rules, content, audio, rendering,
  * persistence into the DOM UI. Browser-only (window.AXGame). */
-import { createRenderer, webglAvailable } from './render3d.js';
+import { createRenderer, webglAvailable, gpuInfo } from './render3d.js';
+import { CATEGORIES, PRESETS, resolve, presetTier, describe, normalizePreset, choosePreset } from './gfx.js';
+import { gfxStrings } from './gfx-i18n.js';
 
 const AXAudio = window.AXAudio;
 const AXRules = window.AXRules;
@@ -140,7 +142,10 @@ function startRound(baseCfg, ctx) {
   host.innerHTML = '';
   webglOk = webglAvailable();
   if (webglOk) {
-    renderer3d = createRenderer({ host: host, content: AXContent, settings: doc.settings, rng: AXRNG });
+    renderer3d = createRenderer({ host: host, content: AXContent, settings: doc.settings, rng: AXRNG,
+      graphics: gfxSaved() });
+    appliedGfx = JSON.stringify(gfxSaved());
+    appliedTheme = doc.settings.theme;
     renderer3d.setReducedMotion(doc.settings.reducedMotion);
     renderer3d.buildBoard(state);
     renderer3d.syncState(state, [], true, freeIds(state));
@@ -362,21 +367,140 @@ function showCaption(text) {
   captionTimer = setTimeout(() => { c.textContent = ''; }, 1800);
 }
 
-function effectiveTier() {
-  const t = doc.settings.graphicsTier;
-  if (t !== 'auto') return t;
-  return (window.matchMedia && matchMedia('(pointer:coarse)').matches) ? 'medium' : 'high';
+// ---------- graphics settings (model in js/gfx.js, strings in js/gfx-i18n.js) ----------
+let appliedGfx = '';          // last graphics JSON pushed to the live renderer
+let appliedTheme = '';
+const GS = gfxStrings(typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+
+/** Saved graphics settings in the shape gfx.resolve() expects. */
+function gfxSaved() {
+  const g = doc.settings.graphics && typeof doc.settings.graphics === 'object' ? doc.settings.graphics : {};
+  return Object.assign({}, g, { preset: normalizePreset(doc.settings.graphicsTier) });
+}
+
+function gfxResolved() {
+  return resolve(gfxSaved(), gpuInfo().detected);
+}
+
+function applyGraphics() {
+  const r = gfxResolved();
+  document.body.dataset.gfxPreset = r.preset;
+  document.body.dataset.gfxAuto = r.auto ? '1' : '0';
+  document.body.classList.toggle('gfx-bg-static', r.background === 'static'); // title key-art drift
+  if (!renderer3d) return;
+  const json = JSON.stringify(gfxSaved());
+  if (json !== appliedGfx) { appliedGfx = json; renderer3d.setGraphics(gfxSaved()); }
 }
 
 function applyVisualSettings() {
   document.body.classList.toggle('large-text', !!doc.settings.largeText);
   document.body.classList.toggle('high-contrast', !!doc.settings.highContrast);
+  applyGraphics();
   if (renderer3d) {
-    renderer3d.setQuality(effectiveTier());
-    renderer3d.setTheme(doc.settings.theme);
+    if (doc.settings.theme !== appliedTheme) { appliedTheme = doc.settings.theme; renderer3d.setTheme(doc.settings.theme); }
     renderer3d.setReducedMotion(doc.settings.reducedMotion);
   }
   AXAudio.setCaptions(doc.settings.captions, showCaption);
+}
+
+function tierName(t) { return (GS.tier && GS.tier[t]) || t; }
+
+// Graphics section of the Settings dialog. Every control has a stable id for tests.
+function buildGraphicsSection() {
+  const sec = el('section', 'gfx-section');
+  sec.id = 'gfx-section';
+  sec.setAttribute('aria-labelledby', 'gfx-title');
+  const h = el('h3', null, GS.section); h.id = 'gfx-title';
+  sec.appendChild(h);
+  const r = gfxResolved();
+  const g = gfxSaved();
+  const det = gpuInfo().detected;
+
+  const tier = el('select'); tier.id = 'set-tier'; tier.setAttribute('data-gfx', 'preset');
+  const auto = el('option', null, GS.auto.replace('{tier}', tierName(det))); auto.value = 'auto';
+  tier.appendChild(auto);
+  PRESETS.forEach(p => { const o = el('option', null, tierName(p)); o.value = p; tier.appendChild(o); });
+  tier.value = g.preset;
+  sec.appendChild(setRow(GS.quality, tier));
+
+  const scale = el('input'); scale.type = 'range'; scale.id = 'gfx-scale'; scale.setAttribute('data-gfx', 'render_scale');
+  scale.min = '50'; scale.max = '200'; scale.step = '5';
+  scale.value = String(Math.round((Number(g.render_scale) || 1) * 100));
+  const out = el('output', 'gfx-scale-val small', scale.value + '%'); out.id = 'gfx-scale-val'; out.setAttribute('for', 'gfx-scale');
+  const wrap = el('span', 'gfx-scale-wrap'); wrap.appendChild(scale); wrap.appendChild(out);
+  const scaleRow = setRow(GS.renderScale, wrap);
+  scaleRow.querySelector('label').setAttribute('for', 'gfx-scale');
+  sec.appendChild(scaleRow);
+
+  Object.keys(CATEGORIES).forEach(cat => {
+    const sel = el('select'); sel.id = 'gfx-' + cat; sel.setAttribute('data-gfx', cat);
+    const from = el('option', null, GS.fromPreset.replace('{tier}', tierName(presetTier(r.preset, cat))));
+    from.value = 'preset';
+    sel.appendChild(from);
+    CATEGORIES[cat].forEach(t => { const o = el('option', null, tierName(t)); o.value = t; sel.appendChild(o); });
+    sel.value = CATEGORIES[cat].includes(g[cat]) ? g[cat] : 'preset';
+    sec.appendChild(setRow(GS.cat[cat] || cat, sel));
+  });
+
+  const adaptive = el('input'); adaptive.type = 'checkbox'; adaptive.id = 'gfx-adaptive'; adaptive.setAttribute('data-gfx', 'adaptive');
+  adaptive.checked = g.adaptive !== false;
+  sec.appendChild(setRow(GS.adaptive, adaptive));
+  const fpsBox = el('input'); fpsBox.type = 'checkbox'; fpsBox.id = 'gfx-fps'; fpsBox.setAttribute('data-gfx', 'show_fps');
+  fpsBox.checked = !!g.show_fps;
+  sec.appendChild(setRow(GS.showFps, fpsBox));
+
+  const sum = el('p', 'small muted gfx-summary'); sum.id = 'gfx-summary'; sum.setAttribute('aria-live', 'polite');
+  sec.appendChild(sum);
+  const note = el('p', 'small gfx-note', GS.postFailed); note.id = 'gfx-note'; note.hidden = true;
+  sec.appendChild(note);
+  return sec;
+}
+
+function refreshGraphicsSection() {
+  const sec = $('gfx-section');
+  if (!sec) return;
+  const r = gfxResolved();
+  Object.keys(CATEGORIES).forEach(cat => {
+    const sel = $('gfx-' + cat);
+    if (sel) sel.options[0].textContent = GS.fromPreset.replace('{tier}', tierName(presetTier(r.preset, cat)));
+  });
+  const info = renderer3d && renderer3d.graphicsInfo ? renderer3d.graphicsInfo() : null;
+  let px;
+  if (info && info.resolved) {
+    const m = /(\d+)×(\d+) px/.exec(info.summary);
+    px = m ? [m[1], m[2]] : null;
+  } else { // estimate the square board canvas at the current window size
+    const side = Math.min(window.innerHeight * 0.72, window.innerWidth - 28, 640);
+    const ratio = Math.min(window.devicePixelRatio || 1, r.maxDpr) * r.scale;
+    px = [Math.round(side * ratio), Math.round(side * ratio)];
+  }
+  $('gfx-summary').textContent = [gpuInfo().gpu || 'unknown GPU', describe(r, px, GS.cost)].join(' · ');
+  $('gfx-summary').setAttribute('data-gfx-preset', r.preset);
+  $('gfx-note').hidden = !(info && info.postFailed);
+}
+
+function onGraphicsChange(target) {
+  const key = target.getAttribute('data-gfx');
+  const s = doc.settings;
+  let g = Object.assign({}, s.graphics && typeof s.graphics === 'object' ? s.graphics : {});
+  if (key === 'preset') {
+    // choosing a preset clears the per-category overrides
+    g = choosePreset(g, target.value);
+    s.graphicsTier = g.preset;
+    delete g.preset;
+    Object.keys(CATEGORIES).forEach(cat => { const sel = $('gfx-' + cat); if (sel) sel.value = 'preset'; });
+  } else if (key === 'render_scale') {
+    g.render_scale = Math.max(0.5, Math.min(2, Number(target.value) / 100));
+    $('gfx-scale-val').textContent = target.value + '%';
+  } else if (key === 'adaptive') g.adaptive = target.checked;
+  else if (key === 'show_fps') g.show_fps = target.checked;
+  else if (CATEGORIES[key]) {
+    if (target.value === 'preset') delete g[key]; else g[key] = target.value;
+  }
+  s.graphics = g;
+  applyGraphics();
+  refreshGraphicsSection();
+  AXStore.save(doc);
 }
 
 function setRow(labelTxt, control) {
@@ -415,13 +539,6 @@ function buildSettingsOverlay() {
   card.appendChild(setRow('Voice volume', slider('set-voice', s.voice)));
   card.appendChild(setRow('Captions for sound cues', check('set-captions', s.captions)));
 
-  const tier = el('select'); tier.id = 'set-tier';
-  [['auto', 'Automatic'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High']].forEach(([v, t]) => {
-    const o = el('option', null, t); o.value = v; tier.appendChild(o);
-  });
-  tier.value = s.graphicsTier;
-  card.appendChild(setRow('Graphics quality', tier));
-
   const stars = Object.values(doc.progress.journeyStars).reduce((a, b) => a + b, 0);
   const theme = el('select'); theme.id = 'set-theme';
   AXContent.THEMES.forEach(t => {
@@ -437,6 +554,7 @@ function buildSettingsOverlay() {
   card.appendChild(setRow('Reduced motion', check('set-motion', s.reducedMotion)));
   card.appendChild(setRow('Larger text', check('set-large', s.largeText)));
   card.appendChild(setRow('High contrast', check('set-contrast', s.highContrast)));
+  card.appendChild(buildGraphicsSection());
 
   const row = el('div', 'row');
   const close = el('button', 'btn primary', 'Close');
@@ -445,8 +563,13 @@ function buildSettingsOverlay() {
   card.appendChild(row);
 
   ov.appendChild(card);
-  ov.addEventListener('change', onSettingsChange);
-  ov.addEventListener('input', e => { if (e.target.type === 'range') onSettingsChange(); });
+  ov.addEventListener('change', e => {
+    if (e.target.hasAttribute('data-gfx')) onGraphicsChange(e.target); else onSettingsChange();
+  });
+  ov.addEventListener('input', e => {
+    if (e.target.type !== 'range') return;
+    if (e.target.hasAttribute('data-gfx')) onGraphicsChange(e.target); else onSettingsChange();
+  });
   return ov;
 }
 
@@ -458,7 +581,6 @@ function onSettingsChange() {
   s.ambience = parseFloat($('set-ambience').value);
   s.voice = parseFloat($('set-voice').value);
   s.captions = $('set-captions').checked;
-  s.graphicsTier = $('set-tier').value;
   s.theme = $('set-theme').value;
   s.reducedMotion = $('set-motion').checked;
   s.largeText = $('set-large').checked;
@@ -475,6 +597,7 @@ function openSettings() {
   if (old) old.parentNode.replaceChild(buildSettingsOverlay(), old);
   else document.getElementById('app').appendChild(buildSettingsOverlay());
   openOverlay('settings-overlay');
+  refreshGraphicsSection();
   const first = $('set-muted');
   if (first) first.focus();
 }
@@ -796,6 +919,7 @@ async function init() {
   AXAudio.setCaptions(doc.settings.captions, showCaption);
   document.body.classList.toggle('large-text', !!doc.settings.largeText);
   document.body.classList.toggle('high-contrast', !!doc.settings.highContrast);
+  applyGraphics();
 
   window.addEventListener('resize', () => { if (renderer3d) renderer3d.resize(); });
   document.addEventListener('visibilitychange', () => {
@@ -823,6 +947,7 @@ async function init() {
       AXAudio.applySettings(doc.settings);
       document.body.classList.toggle('large-text', !!doc.settings.largeText);
       document.body.classList.toggle('high-contrast', !!doc.settings.highContrast);
+      applyGraphics();
       fillPanels();
     }
   } catch (e) { /* offline or no token: the local save is already loaded */ }
