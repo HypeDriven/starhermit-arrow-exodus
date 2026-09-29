@@ -291,3 +291,7 @@ QA bar as checkable statements: every button on every screen is reachable by cli
 - 7×7 tiles fall below the 44 px touch-target guideline on 390 px-wide phones; the keyboard path is not available on touch devices.
 
 **Design intent not yet implemented**: the nine required locales with a language switcher; StarHermit daily/score-chase leaderboards and server-side achievements (the tie-break and command validation are ready; achievements stay local inside the cloud-saved doc); server-time daily boundary; a DOM board mirror for screen readers; safe-area padding.
+
+## Browser interference
+
+`browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.
