@@ -1,4 +1,5 @@
 name=Arrow Exodus
+description=Clear a board of arrow tiles by releasing each one when its path to the edge is open.
 launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=server.js
