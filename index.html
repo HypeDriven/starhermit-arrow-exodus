@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Arrow Exodus</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="stylesheet" href="/css/menu.css">
@@ -37,6 +37,8 @@ a{color:var(--accent);}
 .modal.card{max-width:min(92vw,480px);width:100%;max-height:86vh;overflow:auto;}
 .score-line{display:flex;justify-content:space-between;gap:16px;padding:3px 0;}
 #pause-overlay,#results-overlay,.modal-backdrop{display:none;}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;max-width:calc(100vw - 32px);padding:10px 16px;background:#20262e;color:var(--text);border:1px solid var(--accent2);border-radius:8px;font-size:.95rem;text-align:center;overflow-wrap:anywhere;}
+.toast[hidden],.btn[hidden]{display:none;}
 .btn:focus-visible{outline:3px solid var(--accent2);outline-offset:2px;}
 .set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:5px 0;}
 .set-row input[type=range]{flex:0 1 170px;}
@@ -80,6 +82,7 @@ body.high-contrast .btn.primary{background:var(--accent);color:#000;}
 </style>
 <script src="/vendor/three.module.min.js" type="module"></script>
 <script src="browser-guard.js"></script>
+<script src="/starhermit-sdk.js"></script>
 </head>
 <body>
 <div id="app">
@@ -105,6 +108,8 @@ body.high-contrast .btn.primary{background:var(--accent);color:#000;}
           <button class="btn" data-action="journey-info">Journey</button>
           <button class="btn" data-action="profile">Profile</button>
           <button class="btn" data-action="settings">Settings</button>
+          <button class="btn" id="btn-invite" data-action="invite" hidden>Invite a friend</button>
+          <button class="btn" id="btn-sign-in" data-action="sign-in" hidden>Sign in with StarHermit</button>
         </div>
       </div>
     </div>
@@ -173,6 +178,7 @@ body.high-contrast .btn.primary{background:var(--accent);color:#000;}
   </section>
 
 </div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script type="module">
 import { createRenderer, webglAvailable } from '/js/render3d.js';
 window.AXRender = { createRenderer: createRenderer, webglAvailable: webglAvailable };

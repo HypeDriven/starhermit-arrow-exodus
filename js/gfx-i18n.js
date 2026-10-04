@@ -107,3 +107,65 @@ export function gfxStrings(locale) {
   const first = { en: 'en-US', es: 'es-419', de: 'de-DE', fr: 'fr-FR', pt: 'pt-BR', it: 'it-IT' }[lang];
   return GFX_STRINGS[first] || GFX_STRINGS['en-US'];
 }
+
+/* StarHermit account strings (title screen sign-in, invite, sync line).
+ * `{name}` is the player's display name. */
+const P_EN = {
+  signIn: 'Sign in with StarHermit', invite: 'Invite a friend',
+  inviteCopied: 'Invite link copied to the clipboard.', inviteFailed: 'Could not copy the invite link.',
+  offline: 'Offline — progress is stored on this device.', playingAs: 'Playing as {name}',
+  synced: 'progress synced', saving: 'saving…', syncOff: 'cloud sync unavailable',
+  signedOut: 'Signed out of StarHermit — progress stays on this device.',
+};
+const P_ES = {
+  signIn: 'Iniciar sesión con StarHermit', invite: 'Invitar a un amigo',
+  inviteCopied: 'Enlace de invitación copiado al portapapeles.', inviteFailed: 'No se pudo copiar el enlace de invitación.',
+  offline: 'Sin conexión: el progreso se guarda en este dispositivo.', playingAs: 'Jugando como {name}',
+  synced: 'progreso sincronizado', saving: 'guardando…', syncOff: 'sincronización en la nube no disponible',
+  signedOut: 'Sesión de StarHermit cerrada: el progreso se queda en este dispositivo.',
+};
+const P_FR = {
+  signIn: 'Se connecter avec StarHermit', invite: 'Inviter un ami',
+  inviteCopied: 'Lien d’invitation copié dans le presse-papiers.', inviteFailed: 'Impossible de copier le lien d’invitation.',
+  offline: 'Hors ligne : la progression est enregistrée sur cet appareil.', playingAs: 'Vous jouez en tant que {name}',
+  synced: 'progression synchronisée', saving: 'enregistrement…', syncOff: 'synchronisation cloud indisponible',
+  signedOut: 'Déconnecté de StarHermit : la progression reste sur cet appareil.',
+};
+export const PLATFORM_STRINGS = {
+  'en-US': P_EN,
+  'en-GB': P_EN,
+  'es-419': P_ES,
+  'es-ES': Object.assign({}, P_ES, { inviteCopied: 'Enlace de invitación copiado en el portapapeles.' }),
+  'de-DE': {
+    signIn: 'Mit StarHermit anmelden', invite: 'Freund einladen',
+    inviteCopied: 'Einladungslink in die Zwischenablage kopiert.', inviteFailed: 'Einladungslink konnte nicht kopiert werden.',
+    offline: 'Offline – der Fortschritt wird auf diesem Gerät gespeichert.', playingAs: 'Du spielst als {name}',
+    synced: 'Fortschritt synchronisiert', saving: 'wird gespeichert …', syncOff: 'Cloud-Synchronisierung nicht verfügbar',
+    signedOut: 'Von StarHermit abgemeldet – der Fortschritt bleibt auf diesem Gerät.',
+  },
+  'fr-FR': P_FR,
+  'fr-CA': Object.assign({}, P_FR, { syncOff: 'synchronisation infonuagique indisponible' }),
+  'pt-BR': {
+    signIn: 'Entrar com a StarHermit', invite: 'Convidar um amigo',
+    inviteCopied: 'Link de convite copiado para a área de transferência.', inviteFailed: 'Não foi possível copiar o link de convite.',
+    offline: 'Offline — o progresso fica salvo neste dispositivo.', playingAs: 'Jogando como {name}',
+    synced: 'progresso sincronizado', saving: 'salvando…', syncOff: 'sincronização na nuvem indisponível',
+    signedOut: 'Você saiu da StarHermit — o progresso continua neste dispositivo.',
+  },
+  'it-IT': {
+    signIn: 'Accedi con StarHermit', invite: 'Invita un amico',
+    inviteCopied: 'Link di invito copiato negli appunti.', inviteFailed: 'Impossibile copiare il link di invito.',
+    offline: 'Offline: i progressi sono salvati su questo dispositivo.', playingAs: 'Stai giocando come {name}',
+    synced: 'progressi sincronizzati', saving: 'salvataggio…', syncOff: 'sincronizzazione cloud non disponibile',
+    signedOut: 'Disconnesso da StarHermit: i progressi restano su questo dispositivo.',
+  },
+};
+
+/** Account strings for a BCP-47 tag (same fallback rules as gfxStrings). */
+export function platformStrings(locale) {
+  const tag = String(locale || 'en-US');
+  if (PLATFORM_STRINGS[tag]) return PLATFORM_STRINGS[tag];
+  const lang = tag.split('-')[0].toLowerCase();
+  const first = { en: 'en-US', es: 'es-419', de: 'de-DE', fr: 'fr-FR', pt: 'pt-BR', it: 'it-IT' }[lang];
+  return PLATFORM_STRINGS[first] || PLATFORM_STRINGS['en-US'];
+}

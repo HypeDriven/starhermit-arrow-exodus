@@ -2,7 +2,7 @@
  * persistence into the DOM UI. Browser-only (window.AXGame). */
 import { createRenderer, webglAvailable, gpuInfo } from './render3d.js';
 import { CATEGORIES, PRESETS, resolve, presetTier, describe, normalizePreset, choosePreset } from './gfx.js';
-import { gfxStrings } from './gfx-i18n.js';
+import { gfxStrings, platformStrings } from './gfx-i18n.js';
 
 const AXAudio = window.AXAudio;
 const AXRules = window.AXRules;
@@ -41,18 +41,45 @@ function elapsedMs() {
 }
 
 // ---------- account / sync status line (title screen) ----------
+const PS = platformStrings(typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+let signedOutNotice = false;
+
 function renderAccountLine() {
   const line = $('account-line');
+  const signIn = $('btn-sign-in'), invite = $('btn-invite');
+  if (signIn) { signIn.textContent = PS.signIn; signIn.hidden = !AXPlatform.canSignIn(); }
+  if (invite) { invite.textContent = PS.invite; invite.hidden = !AXPlatform.hosted; }
   if (!line) return;
   if (!AXPlatform.hosted) {
-    line.textContent = 'Offline — progress is stored on this device.';
+    line.textContent = signedOutNotice ? PS.signedOut : PS.offline;
     return;
   }
   const name = AXPlatform.profile ? AXPlatform.profile.displayName : '…';
-  const syncTxt = AXPlatform.sync === 'synced' ? 'progress synced'
-    : AXPlatform.sync === 'saving' ? 'saving…'
-    : 'cloud sync unavailable';
-  line.textContent = 'Playing as ' + name + ' · ' + syncTxt;
+  const syncTxt = AXPlatform.sync === 'synced' ? PS.synced
+    : AXPlatform.sync === 'saving' ? PS.saving
+    : PS.syncOff;
+  line.textContent = PS.playingAs.replace('{name}', name) + ' · ' + syncTxt;
+}
+
+let toastTimer = 0;
+function showToast(text) {
+  const t = $('toast');
+  if (!t) return;
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+async function copyInvite() {
+  const link = AXPlatform.inviteLink();
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    showToast(PS.inviteCopied);
+  } catch (e) {
+    showToast(PS.inviteFailed + ' ' + link);
+  }
 }
 
 // ---------- screens ----------
@@ -791,6 +818,8 @@ const actions = {
   'start-score-chase': () =>
     startRound(AXContent.SCORE_CHASE, { kind: 'score', label: 'Score Chase — Endless Plates', sub: AXContent.SCORE_CHASE.intro }),
   'profile': () => showScreen('profile-info'),
+  'sign-in': () => AXPlatform.signIn(),
+  'invite': () => copyInvite(),
   'start-profile': () => showScreen('title'),
   'back-modes': () => showScreen('modes'),
   'practice-start': id => {
@@ -835,11 +864,25 @@ function pieceAtCell(r, c) {
   return null;
 }
 
+// Keyboard actions (declared as control.* in starhermit.txt); the platform's
+// per-player overrides replace these codes when signed in.
+const DEFAULT_BINDINGS = {
+  up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
+  launch: ['Enter', 'Space', 'NumpadEnter'], hint: ['KeyH'], undo: ['KeyU'], pause: ['KeyP', 'Escape']
+};
+let bindings = JSON.parse(JSON.stringify(DEFAULT_BINDINGS));
+function actionFor(code) {
+  for (const a in bindings) if (bindings[a].includes(code)) return a;
+  return null;
+}
+
 function onKeyDown(e) {
-  if (e.key === 'Escape' && settingsOpen()) { e.preventDefault(); closeSettings(); return; }
+  const act = actionFor(e.code);
+  const back = e.code === 'Escape' || act === 'pause';
+  if (back && settingsOpen()) { e.preventDefault(); closeSettings(); return; }
   if (currentScreen !== 'play' || !round) return;
   if (overlayOpen()) {
-    if (e.key === 'Escape') { e.preventDefault(); resume(); }
+    if (back) { e.preventDefault(); resume(); }
     return;
   }
   const rows = round.cfg.board.rows, cols = round.cfg.board.cols;
@@ -852,22 +895,21 @@ function onKeyDown(e) {
     if (renderer3d) renderer3d.setCursor(round.cursor);
     AXAudio.play('cursor');
   };
-  switch (e.key) {
-    case 'ArrowUp': e.preventDefault(); moveCursor(-1, 0); break;
-    case 'ArrowDown': e.preventDefault(); moveCursor(1, 0); break;
-    case 'ArrowLeft': e.preventDefault(); moveCursor(0, -1); break;
-    case 'ArrowRight': e.preventDefault(); moveCursor(0, 1); break;
-    case 'Enter':
-    case ' ':
+  switch (act) {
+    case 'up': e.preventDefault(); moveCursor(-1, 0); break;
+    case 'down': e.preventDefault(); moveCursor(1, 0); break;
+    case 'left': e.preventDefault(); moveCursor(0, -1); break;
+    case 'right': e.preventDefault(); moveCursor(0, 1); break;
+    case 'launch':
       if (round.cursor) {
         e.preventDefault();
         const p = pieceAtCell(round.cursor[0], round.cursor[1]);
         if (p) tapPiece(p.id);
       }
       break;
-    case 'h': case 'H': hint(); break;
-    case 'u': case 'U': undo(); break;
-    case 'p': case 'P': case 'Escape':
+    case 'hint': hint(); break;
+    case 'undo': undo(); break;
+    case 'pause':
       e.preventDefault(); pause(); break;
   }
 }
@@ -937,11 +979,17 @@ async function init() {
   try {
     const remoteRaw = await AXPlatform.init({
       onProfile: renderAccountLine,
-      onSync: renderAccountLine
+      onSync: renderAccountLine,
+      onAuth: a => { if (!a.signedIn) signedOutNotice = true; renderAccountLine(); }
     });
+    renderAccountLine();
+    if (AXPlatform.hosted) bindings = await AXPlatform.loadBindings(DEFAULT_BINDINGS);
     const remoteDoc = remoteRaw ? AXStore.loadRaw(remoteRaw) : null;
-    if (remoteDoc) {
-      doc = remoteDoc;
+    const ps = AXPlatform.platformSettings;
+    if (remoteDoc || ps) {
+      if (remoteDoc) doc = remoteDoc;
+      // platform settings KV wins over the saved document's preferences
+      if (ps) for (const k of Object.keys(AXStore.DEFAULT_SETTINGS)) if (k in ps) doc.settings[k] = ps[k];
       AXStore.save(doc); // local cache mirrors the remote doc
       AXAudio.setCaptions(doc.settings.captions, showCaption);
       AXAudio.applySettings(doc.settings);
