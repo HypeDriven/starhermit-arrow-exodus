@@ -28,7 +28,7 @@ function init() {
   try {
     renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
   } catch { useFallback(); return; }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * ((window.UIScale && UIScale.value) || 1));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();

@@ -966,7 +966,7 @@ export function createRenderer(opts) {
   function applySize() {
     const w = host.clientWidth, h = host.clientHeight;
     if (!w || !h) return;
-    const ratio = Math.min(window.devicePixelRatio || 1, q.maxDpr) * q.scale * adaptiveScale;
+    const ratio = Math.min(window.devicePixelRatio || 1, q.maxDpr) * ((window.UIScale && UIScale.value) || 1) * q.scale * adaptiveScale;
     if (w !== size[0] || h !== size[1] || ratio !== pixelRatio) {
       size = [w, h];
       pixelRatio = ratio;
