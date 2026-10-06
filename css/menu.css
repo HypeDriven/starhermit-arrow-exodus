@@ -75,6 +75,19 @@
   .menu-title{font-size:clamp(2.1rem,10vw,3rem);}
   .menu-secondary{grid-template-columns:1fr 1fr;}
 }
+/* Short viewports (phone landscape): tighten the stack so every menu button fits;
+   scroll (from the top, never clipped) as a last resort. */
+@media (max-height:500px){
+  .menu-content{max-width:none;padding:14px 40px;overflow-y:auto;justify-content:center;justify-content:safe center;}
+  .menu-kicker{font-size:.7rem;margin-bottom:2px;}
+  .menu-title{font-size:2.2rem;}
+  .menu-rule{margin:8px 0 8px;}
+  .menu-tagline{font-size:.92rem;margin-bottom:4px;}
+  .menu-account{margin:0 0 10px;}
+  .menu-actions{gap:8px;max-width:520px;}
+  .menu-actions .btn.big{padding-top:8px;padding-bottom:8px;}
+  .menu-secondary{grid-template-columns:repeat(3,1fr);gap:8px;}
+}
 /* Graphics → Ambient motion: Static also stills the title key-art drift */
 body.gfx-bg-static .menu-bg img{animation:none;}
 @media (prefers-reduced-motion:reduce){
