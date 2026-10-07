@@ -63,6 +63,7 @@ test('standalone: no token, no network, local behaviour', async () => {
   assert.equal(P.inviteLink(), null);
   assert.equal(P.canSignIn(), false); // not on *.starhermit.com
   assert.deepEqual(JSON.parse(JSON.stringify(await P.loadBindings({ hint: ['KeyH'] }))), { hint: ['KeyH'] });
+  assert.deepEqual(JSON.parse(JSON.stringify(await P.submitScore(1200))), { posted: false, rank: null });
   assert.equal(calls.length, 0);
 });
 

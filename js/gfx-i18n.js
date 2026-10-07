@@ -116,6 +116,8 @@ const P_EN = {
   offline: 'Offline — progress is stored on this device.', playingAs: 'Playing as {name}',
   synced: 'progress synced', saving: 'saving…', syncOff: 'cloud sync unavailable',
   signedOut: 'Signed out of StarHermit — progress stays on this device.',
+  lbPosting: 'Posting score to the leaderboard…', lbRank: 'Leaderboard rank: #{rank}',
+  lbPosted: 'Score posted to the leaderboard.', lbNotPosted: 'Score not posted to the leaderboard.',
 };
 const P_ES = {
   signIn: 'Iniciar sesión con StarHermit', invite: 'Invitar a un amigo',
@@ -123,6 +125,8 @@ const P_ES = {
   offline: 'Sin conexión: el progreso se guarda en este dispositivo.', playingAs: 'Jugando como {name}',
   synced: 'progreso sincronizado', saving: 'guardando…', syncOff: 'sincronización en la nube no disponible',
   signedOut: 'Sesión de StarHermit cerrada: el progreso se queda en este dispositivo.',
+  lbPosting: 'Enviando la puntuación a la clasificación…', lbRank: 'Puesto en la clasificación: #{rank}',
+  lbPosted: 'Puntuación enviada a la clasificación.', lbNotPosted: 'La puntuación no se envió a la clasificación.',
 };
 const P_FR = {
   signIn: 'Se connecter avec StarHermit', invite: 'Inviter un ami',
@@ -130,6 +134,8 @@ const P_FR = {
   offline: 'Hors ligne : la progression est enregistrée sur cet appareil.', playingAs: 'Vous jouez en tant que {name}',
   synced: 'progression synchronisée', saving: 'enregistrement…', syncOff: 'synchronisation cloud indisponible',
   signedOut: 'Déconnecté de StarHermit : la progression reste sur cet appareil.',
+  lbPosting: 'Envoi du score au classement…', lbRank: 'Rang au classement : #{rank}',
+  lbPosted: 'Score envoyé au classement.', lbNotPosted: 'Score non envoyé au classement.',
 };
 export const PLATFORM_STRINGS = {
   'en-US': P_EN,
@@ -142,6 +148,8 @@ export const PLATFORM_STRINGS = {
     offline: 'Offline – der Fortschritt wird auf diesem Gerät gespeichert.', playingAs: 'Du spielst als {name}',
     synced: 'Fortschritt synchronisiert', saving: 'wird gespeichert …', syncOff: 'Cloud-Synchronisierung nicht verfügbar',
     signedOut: 'Von StarHermit abgemeldet – der Fortschritt bleibt auf diesem Gerät.',
+    lbPosting: 'Punktzahl wird an die Bestenliste gesendet …', lbRank: 'Platz in der Bestenliste: #{rank}',
+    lbPosted: 'Punktzahl an die Bestenliste gesendet.', lbNotPosted: 'Punktzahl wurde nicht an die Bestenliste gesendet.',
   },
   'fr-FR': P_FR,
   'fr-CA': Object.assign({}, P_FR, { syncOff: 'synchronisation infonuagique indisponible' }),
@@ -151,6 +159,8 @@ export const PLATFORM_STRINGS = {
     offline: 'Offline — o progresso fica salvo neste dispositivo.', playingAs: 'Jogando como {name}',
     synced: 'progresso sincronizado', saving: 'salvando…', syncOff: 'sincronização na nuvem indisponível',
     signedOut: 'Você saiu da StarHermit — o progresso continua neste dispositivo.',
+    lbPosting: 'Enviando a pontuação para o ranking…', lbRank: 'Posição no ranking: #{rank}',
+    lbPosted: 'Pontuação enviada para o ranking.', lbNotPosted: 'A pontuação não foi enviada para o ranking.',
   },
   'it-IT': {
     signIn: 'Accedi con StarHermit', invite: 'Invita un amico',
@@ -158,6 +168,8 @@ export const PLATFORM_STRINGS = {
     offline: 'Offline: i progressi sono salvati su questo dispositivo.', playingAs: 'Stai giocando come {name}',
     synced: 'progressi sincronizzati', saving: 'salvataggio…', syncOff: 'sincronizzazione cloud non disponibile',
     signedOut: 'Disconnesso da StarHermit: i progressi restano su questo dispositivo.',
+    lbPosting: 'Invio del punteggio alla classifica…', lbRank: 'Posizione in classifica: #{rank}',
+    lbPosted: 'Punteggio inviato alla classifica.', lbNotPosted: 'Punteggio non inviato alla classifica.',
   },
 };
 

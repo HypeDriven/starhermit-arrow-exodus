@@ -784,7 +784,22 @@ function showResults(state) {
     overlayButton(row, 'next', 'Next stage');
   overlayButton(row, 'results-modes', 'Back to Modes');
   overlayButton(row, 'quit-play', 'Title');
+  if (round.ctx.kind !== 'practice') postToLeaderboard(row, state.score.total);
   openOverlay('results-overlay');
+}
+
+// Hosted play only: post the round total and show the player's board rank
+// on the results card. Standalone shows nothing and makes no request.
+function postToLeaderboard(row, total) {
+  if (!AXPlatform.hosted) return;
+  const line = el('p', 'small', PS.lbPosting);
+  line.id = 'results-lb';
+  line.setAttribute('aria-live', 'polite');
+  row.parentNode.insertBefore(line, row);
+  AXPlatform.submitScore(total).then(r => {
+    line.textContent = !r.posted ? PS.lbNotPosted
+      : r.rank ? PS.lbRank.replace('{rank}', r.rank) : PS.lbPosted;
+  });
 }
 
 function showLessonComplete() {

@@ -27,7 +27,8 @@ File map (everything that ships or tests the game):
 | `js/gfx.js` | Pure graphics quality model: presets, categories, GPU detection, `resolve`, `presetTier`, `choosePreset`, `describe` |
 | `js/gfx-i18n.js` | Graphics-section strings in the nine required locales |
 | `js/game.js` | Controller: screens, rounds, timer, HUD, overlays, settings, results, achievements, input |
-| `server.js` | Local static server plus `GET /api/v1/time`; declared as `server=server.js` |
+| `score-script.js` | StarHermit platform script (`server=score-script.js`): range-checks a finished round's total and posts it to the `high-score` leaderboard (canonical copy in the games repo's `tools/score-script.js`) |
+| `server.js` | Local dev server: static files plus `GET /api/v1/time` |
 | `sfx/*.opus`, `sfx/manifest.txt` | 13 authored clips and the canonical event binding table (§9) |
 | `assets/` | Key art and results illustrations (§8, §15) |
 | `coverart.png`, `icon.png`, `favicon.svg` | Store cover (1200×675), 256 px icon, SVG tab icon |
@@ -235,9 +236,10 @@ The shipped build is **English only** except the Settings → Graphics section (
 
 Conventions per https://wiki.starhermit.com/.
 
-- **Manifest** `starhermit.txt`: `name=Arrow Exodus`, `launch=index.html`, `owner=<uuid>`, `server=server.js`, `version=1.0.0`, `contentVersion=1`, `cover=coverart.png`.
-- **Server script** `server.js`: serves the distribution and answers `GET /api/v1/time` with `{ now, utcDate }`. The client does not yet call it (dailies use the device clock, §16).
-- **SDK**: `starhermit-sdk.js` (verbatim copy of the canonical StarHermit client) loads as a classic script right after `browser-guard.js`; `js/platform.js` (`window.AXPlatform`, classic script after `store.js`) calls `StarHermit.init()` at load, before any module runs, and wraps the SDK behind the adapter API (`init`, `onLocalSave`, `flushCloud`, `hosted`, `profile`, `sync`, `platformSettings`, `canSignIn`, `signIn`, `inviteLink`, `loadBindings`).
+- **Manifest** `starhermit.txt`: `name=Arrow Exodus`, `launch=index.html`, `owner=<uuid>`, `server=score-script.js`, `version=1.0.0`, `contentVersion=1`, `cover=coverart.png`.
+- **Platform script** `score-script.js`: a practice session that accepts `{type:'result', scores}`, range-checks each score against its board and posts it. `server.js` is only the local dev server (static files and `GET /api/v1/time` with `{ now, utcDate }`, which the client does not call; dailies use the device clock, §16).
+- **Leaderboard**: one board, `high-score` (integer, higher is better, 0–10,000,000). When signed in, every finished Journey, Daily, Challenge or Score Chase round (won, locked, timed out or resigned) posts its total through `AXPlatform.submitScore` → `StarHermit.submitScores`, and the results card shows "Leaderboard rank: #N" (or "Score posted / not posted to the leaderboard."), localized with the account strings. Practice rounds and lessons post nothing; standalone play shows no line and makes no request.
+- **SDK**: `starhermit-sdk.js` (verbatim copy of the canonical StarHermit client) loads as a classic script right after `browser-guard.js`; `js/platform.js` (`window.AXPlatform`, classic script after `store.js`) calls `StarHermit.init()` at load, before any module runs, and wraps the SDK behind the adapter API (`init`, `onLocalSave`, `flushCloud`, `hosted`, `profile`, `sync`, `platformSettings`, `canSignIn`, `signIn`, `inviteLink`, `loadBindings`, `submitScore`).
 - **Launch and renewal**: the SDK reads `#game_token=<jwt>[&session_id=]` or a sign-in return `#access_token=…`, strips it from the URL, takes the slug from `game_scope` (never hard-coded), sends `Authorization: Bearer` and renews via `POST /api/v1/games/{slug}/launch-token`. When renewal is refused the game signs out: the account line reads "Signed out of StarHermit — progress stays on this device." and play continues locally.
 - **Sign-in**: on `*.starhermit.com` without a token the title shows **Sign in with StarHermit** (`StarHermit.signIn()`); it is hidden when signed in and when running locally.
 - **Identity**: the title account line shows "Playing as <nickname> · <sync status>" from `GET /api/v1/users/{sub}/profile` (fallback `Player ` + id prefix; never `/api/v1/me`).
@@ -246,7 +248,7 @@ Conventions per https://wiki.starhermit.com/.
 - **Invite**: when signed in, the title shows **Invite a friend**, which copies `StarHermit.inviteLink()` to the clipboard and confirms with a toast (or shows the link when the clipboard is blocked).
 - **Controls**: `starhermit.txt` declares eight `control.*` actions (`up`, `down`, `left`, `right`, `launch`, `hint`, `undo`, `pause`); keydown routes by `event.code` through the bindings from `StarHermit.loadBindings` (defaults when standalone). Escape always closes Settings and resumes from pause in addition to the `pause` binding.
 - **Account strings** (sign-in, invite, toast, account line) exist in all nine locales (`PLATFORM_STRINGS` in `js/gfx-i18n.js`, picked from `navigator.language`).
-- **Not used**: `server.js` is a local static server with no platform game script, so there are no sessions, matchmaking, session invites, chat, replays, server achievements or leaderboards; no avatar (the UI has no player chip).
+- **Not used**: matchmaking, multiplayer sessions, session invites, chat, replays and server achievements; no avatar (the UI has no player chip).
 - Standalone (no token) the adapter makes no network requests.
 - **Local stand-ins**: achievements (9 stable keys: `first-exit`, `first-win`, `flawless`, `combo-8`, `journey-half`, `journey-done`, `daily-7`, `score-3000`, `exits-500`) unlock idempotently in `recordResult` and are stored in the save document; personal bests per Journey stage, Challenge, Daily date and Score Chase live in the same document. `store.js` carries a leaderboard tie-break (`sortEntries`: score desc, fewer mistakes, lower duration, session id) and a local board store that the UI does not yet read.
 
@@ -287,7 +289,7 @@ QA bar as checkable statements: every button on every screen is reachable by cli
 
 ## 16. Known limitations
 
-- No localization beyond the Settings → Graphics section and the StarHermit account strings; everything else is English only.
+- No localization beyond the Settings → Graphics section and the StarHermit account and leaderboard strings; everything else is English only.
 - The title screen has no WebGL renderer (the menu hero canvas has no model), so graphics settings affect the play canvas; on the title only Ambient motion applies (key-art drift).
 - Dailies derive the date from the device clock, not `/api/v1/time`; a wrong local clock plays a different day's plate.
 - The Modes screen labels Score Chase as local-best only; no global/friends board exists and nothing is submitted anywhere.
@@ -300,7 +302,7 @@ QA bar as checkable statements: every button on every screen is reachable by cli
 - No safe-area insets on notched phones; no gamepad; no screen-reader board model.
 - 7×7 tiles fall below the 44 px touch-target guideline on 390 px-wide phones; the keyboard path is not available on touch devices.
 
-**Design intent not yet implemented**: the nine required locales with a language switcher; StarHermit daily/score-chase leaderboards and server-side achievements (the tie-break and command validation are ready; achievements stay local inside the cloud-saved doc); server-time daily boundary; a DOM board mirror for screen readers; safe-area padding.
+**Design intent not yet implemented**: the nine required locales with a language switcher; per-mode StarHermit daily/score-chase leaderboards and server-side achievements (the tie-break and command validation are ready; achievements stay local inside the cloud-saved doc); server-time daily boundary; a DOM board mirror for screen readers; safe-area padding.
 
 ## Browser interference
 

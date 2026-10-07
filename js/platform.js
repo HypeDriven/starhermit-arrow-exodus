@@ -124,8 +124,22 @@
     return SH.loadBindings(defaults).catch(function () { return JSON.parse(JSON.stringify(defaults)); });
   }
 
+  // Post a finished round's total to the high-score board (score-script.js).
+  // Resolves { posted, rank } — rank on the board, or null. Standalone: no call.
+  function submitScore(total) {
+    if (!SH || !hosted()) return Promise.resolve({ posted: false, rank: null });
+    return SH.submitScores({ 'high-score': total }).then(function (keys) {
+      if (keys.indexOf('high-score') < 0) return { posted: false, rank: null };
+      return SH.leaderboard('high-score', { pageSize: 100 }).then(function (r) {
+        var me = (r.items || []).filter(function (i) { return i.userId === SH.userId; })[0];
+        return { posted: true, rank: me ? me.rank : null };
+      }, function () { return { posted: true, rank: null }; });
+    }, function () { return { posted: false, rank: null }; });
+  }
+
   return {
     init: init,
+    submitScore: submitScore,
     onLocalSave: onLocalSave,
     flushCloud: flushCloud,
     canSignIn: canSignIn,
