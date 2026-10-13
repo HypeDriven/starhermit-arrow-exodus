@@ -1014,9 +1014,9 @@ export function createRenderer(opts) {
     camera.lookAt(camTarget);
     applySize();
     if (composer) {
-      try { composer.render(dt); }
-      catch (e) { postFailed = true; composer.dispose(); composer = null; renderer.render(scene, camera); }
-    } else renderer.render(scene, camera);
+      try { (globalThis.GameOptions ? globalThis.GameOptions.draw(composer.renderer, () => composer.render(dt)) : composer.render(dt)); }
+      catch (e) { postFailed = true; composer.dispose(); composer = null; (globalThis.GameOptions ? globalThis.GameOptions.draw(renderer, () => renderer.render(scene, camera)) : renderer.render(scene, camera)); }
+    } else (globalThis.GameOptions ? globalThis.GameOptions.draw(renderer, () => renderer.render(scene, camera)) : renderer.render(scene, camera));
   }
 
   function setRunning(on) { running = !!on; }

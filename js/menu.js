@@ -85,7 +85,7 @@ function init() {
     group.position.y = REDUCED ? 0 : Math.sin(t * 0.9) * 0.08;
     camera.position.set(tiltY * 1.4, 0.35, 4.4);
     camera.lookAt(0, 0, 0);
-    renderer.render(scene, camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(renderer, () => renderer.render(scene, camera)) : renderer.render(scene, camera));
   }
   frame();
   window.addEventListener('pagehide', () => cancelAnimationFrame(raf), { once: true });
