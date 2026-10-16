@@ -100,18 +100,18 @@ body.high-contrast .btn.primary{background:var(--accent);color:#000;}
       <canvas id="menu-hero-canvas" data-src=""></canvas>
     </div>
     <div class="menu-content">
-      <p class="menu-kicker">A fletcher's-workbench puzzle</p>
+      <p class="menu-kicker" data-i18n="kicker">A fletcher’s-workbench puzzle</p>
       <h1 class="menu-title">Arrow Exodus</h1>
       <div class="menu-rule" aria-hidden="true"></div>
-      <p class="menu-tagline">Tap unobstructed arrows to send them off the board in their facing direction.</p>
+      <p class="menu-tagline" data-i18n="tagline">Tap unobstructed arrows to send them off the board in their facing direction.</p>
       <p id="account-line" class="menu-account" aria-live="polite"></p>
       <div class="menu-actions">
-        <button class="btn primary big" data-action="play">Play</button>
+        <button class="btn primary big" data-action="play" data-i18n="play">Play</button>
         <div class="menu-secondary">
-          <button class="btn" data-action="daily">Daily Challenge</button>
-          <button class="btn" data-action="journey-info">Journey</button>
-          <button class="btn" data-action="profile">Profile</button>
-          <button class="btn" data-action="settings">Settings</button>
+          <button class="btn" data-action="daily" data-i18n="dailyChallenge">Daily Challenge</button>
+          <button class="btn" data-action="journey-info" data-i18n="journey">Journey</button>
+          <button class="btn" data-action="profile" data-i18n="profile">Profile</button>
+          <button class="btn" data-action="settings" data-i18n="settings">Settings</button>
           <button class="btn" id="btn-invite" data-action="invite" hidden>Invite a friend</button>
           <button class="btn" id="btn-sign-in" data-action="sign-in" hidden>Sign in with StarHermit</button>
         </div>
@@ -121,55 +121,55 @@ body.high-contrast .btn.primary{background:var(--accent);color:#000;}
 
   <!-- ============ MODE SELECT ============ -->
   <section class="screen" data-screen="modes">
-    <h2>Modes</h2>
+    <h2 data-i18n="modes">Modes</h2>
     <ul style="padding-left:1.2em;line-height:2;">
-      <li><button class="btn" data-action="learn">Learn — interactive lessons, one rule at a time.</button></li>
-      <li><button class="btn" data-action="journey">Journey — authored progression with mastery stages.</button></li>
-      <li><button class="btn" data-action="daily-mode">Daily — one shared seed per UTC day.</button></li>
-      <li><button class="btn" data-action="practice-info">Practice — selectable difficulty, undo where allowed.</button></li>
-      <li><button class="btn" data-action="challenge-info">Challenge — constrained goals: move limits, speed targets, altered layouts.</button></li>
-      <li><button class="btn" data-action="score-chase-info">Score chase — endless plates; your best is tracked (local).</button></li>
+      <li><button class="btn" data-action="learn" data-i18n="modes.learn">Learn — interactive lessons, one rule at a time.</button></li>
+      <li><button class="btn" data-action="journey" data-i18n="modes.journey">Journey — authored progression with mastery stages.</button></li>
+      <li><button class="btn" data-action="daily-mode" data-i18n="modes.daily">Daily — one shared seed per UTC day.</button></li>
+      <li><button class="btn" data-action="practice-info" data-i18n="modes.practice">Practice — selectable difficulty, undo where allowed.</button></li>
+      <li><button class="btn" data-action="challenge-info" data-i18n="modes.challenge">Challenge — constrained goals: move limits, speed targets, altered layouts.</button></li>
+      <li><button class="btn" data-action="score-chase-info" data-i18n="modes.score">Score chase — endless plates; your best is tracked (local).</button></li>
     </ul>
   </section>
 
   <!-- ============ JOURNEY INFO (pre-play) ============ -->
   <section class="screen" data-screen="journey-info">
-    <h2>Journey</h2>
+    <h2 data-i18n="journey">Journey</h2>
     <p id="ji-summary"></p>
-    <div class="row"><button class="btn primary big" data-action="start-journey">Begin Journey</button></div>
-    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+    <div class="row"><button class="btn primary big" data-action="start-journey" data-i18n="beginJourney">Begin Journey</button></div>
+    <div class="row"><button class="btn" data-action="back-modes" data-i18n="backModes">Back to Modes</button></div>
   </section>
 
   <!-- ============ PRACTICE INFO (pre-play) ============ -->
   <section class="screen" data-screen="practice-info">
-    <h2>Practice</h2>
-    <p>Select a difficulty. No effect on competitive rating.</p>
+    <h2 data-i18n="practice">Practice</h2>
+    <p data-i18n="practice.desc">Select a difficulty. No effect on competitive rating.</p>
     <div id="pi-list"></div>
-    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+    <div class="row"><button class="btn" data-action="back-modes" data-i18n="backModes">Back to Modes</button></div>
   </section>
 
   <!-- ============ CHALLENGE INFO (pre-play) ============ -->
   <section class="screen" data-screen="challenge-info">
-    <h2>Challenge</h2>
-    <p>Six constrained plates. No undo on any of them.</p>
+    <h2 data-i18n="challenge">Challenge</h2>
+    <p data-i18n="challenge.desc">Six constrained plates. No undo on any of them.</p>
     <div id="ci-list"></div>
-    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+    <div class="row"><button class="btn" data-action="back-modes" data-i18n="backModes">Back to Modes</button></div>
   </section>
 
   <!-- ============ SCORE CHASE INFO (pre-play) ============ -->
   <section class="screen" data-screen="score-chase-info">
-    <h2>Score Chase</h2>
+    <h2 data-i18n="scoreChase">Score Chase</h2>
     <p id="sci-summary"></p>
-    <div class="row"><button class="btn primary big" data-action="start-score-chase">Begin Score Chase</button></div>
-    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+    <div class="row"><button class="btn primary big" data-action="start-score-chase" data-i18n="beginScore">Begin Score Chase</button></div>
+    <div class="row"><button class="btn" data-action="back-modes" data-i18n="backModes">Back to Modes</button></div>
   </section>
 
   <!-- ============ PROFILE (pre-play) ============ -->
   <section class="screen" data-screen="profile-info">
-    <h2>Profile</h2>
+    <h2 data-i18n="profile">Profile</h2>
     <p id="pf-summary"></p>
-    <div class="row"><button class="btn primary big" data-action="start-profile">Begin Profile</button></div>
-    <div class="row"><button class="btn" data-action="back-modes">Back to Modes</button></div>
+    <div class="row"><button class="btn primary big" data-action="start-profile" data-i18n="beginProfile">Begin Profile</button></div>
+    <div class="row"><button class="btn" data-action="back-modes" data-i18n="backModes">Back to Modes</button></div>
   </section>
 
   <!-- ============ PLAY (HUD) ============ -->
@@ -193,6 +193,8 @@ if (typeof window.AXRNG === 'undefined') {} // UMD sets it via other scripts? no
 <script src="/js/content.js"></script>
 <script src="/js/store.js"></script>
 <script src="/js/platform.js"></script>
+<script src="/sh-language.js"></script>
+<script src="/js/i18n.js"></script>
 <script src="/js/audio.js"></script>
 <script type="module">
   window.AXGame = (await import('/js/game.js')).default;

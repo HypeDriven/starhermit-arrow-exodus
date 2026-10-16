@@ -101,6 +101,39 @@
       root.AXPlatform.onLocalSave(wrapped); // host adapter mirrors to the cloud slot
   }
 
+  // Another device saved the cloud slot since this one loaded it: combine the
+  // two documents so neither side's progress is lost. Every record keeps the
+  // better value (stars, best scores, counters), unlock maps are unioned, and
+  // this device's settings win (they are what the player is looking at).
+  function mergeDocs(remote, local) {
+    var r = migrate(remote ? JSON.parse(JSON.stringify(remote)) : null);
+    var l = migrate(local ? JSON.parse(JSON.stringify(local)) : null);
+    if (!r) return l || fresh();
+    if (!l) return r;
+    var rp = r.progress, lp = l.progress, out = l;
+    function maxMap(a, b) {
+      var m = {}, k;
+      for (k in a) m[k] = a[k];
+      for (k in b) m[k] = typeof b[k] === 'number' && typeof m[k] === 'number' ? Math.max(m[k], b[k]) : (m[k] || b[k]);
+      return m;
+    }
+    ['tutorialDone', 'journeyStars', 'journeyBest', 'challengeBest', 'dailiesDone'].forEach(function (k) {
+      out.progress[k] = maxMap(rp[k] || {}, lp[k] || {});
+    });
+    // achievements keep the earliest unlock time
+    var ach = {}, key;
+    for (key in rp.achievements) ach[key] = rp.achievements[key];
+    for (key in lp.achievements) ach[key] = ach[key] ? Math.min(ach[key], lp.achievements[key]) : lp.achievements[key];
+    out.progress.achievements = ach;
+    out.progress.endlessBest = Math.max(rp.endlessBest || 0, lp.endlessBest || 0);
+    var st = {};
+    Object.keys(Object.assign({}, rp.stats, lp.stats)).forEach(function (k) {
+      st[k] = Math.max(Number(rp.stats[k]) || 0, Number(lp.stats[k]) || 0);
+    });
+    out.progress.stats = st;
+    return out;
+  }
+
   // ---------- leaderboards (local; host adapter may sync) ----------
   function loadBoards() {
     try {
@@ -127,7 +160,7 @@
     SAVE_VERSION: SAVE_VERSION,
     DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     load: load, save: save, fresh: fresh, migrate: migrate,
-    checksum: checksum, loadRaw: loadRaw,
+    checksum: checksum, loadRaw: loadRaw, mergeDocs: mergeDocs,
     loadBoards: loadBoards, saveBoards: saveBoards, sortEntries: sortEntries
   };
 });

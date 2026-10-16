@@ -34,7 +34,12 @@ function boot({ hash = '' } = {}) {
     const u = decodeURIComponent(url);
     if (u.endsWith('/api/v1/users/' + USER + '/profile')) return Response.json({ nickname: 'Fletch' });
     if (u.endsWith('/cloud-saves/game:' + SLUG)) {
-      if (method === 'PUT') { cloud.bytes = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return new Response(null, { status: 204 }); }
+      if (method === 'PUT') {
+        if (cloud.conflict) { cloud.conflict = false; return Response.json({ etag: '"other"' }, { status: 412 }); }
+        cloud.puts = (cloud.puts || 0) + 1;
+        cloud.bytes = Buffer.from(JSON.parse(init.body).dataBase64, 'base64');
+        return Response.json({ etag: '"v' + cloud.puts + '"' });
+      }
       return cloud.bytes ? new Response(cloud.bytes) : new Response('', { status: 404 });
     }
     if (u.endsWith('/games/' + SLUG + '/settings')) {
@@ -47,9 +52,9 @@ function boot({ hash = '' } = {}) {
   ctx.self = ctx;
   ctx.window = ctx;
   vm.createContext(ctx);
-  for (const f of ['starhermit-sdk.js', 'js/platform.js'])
+  for (const f of ['starhermit-sdk.js', 'js/platform.js', 'js/store.js'])
     vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
-  return { ctx, calls, cloud, kv, P: ctx.AXPlatform, SH: ctx.StarHermit };
+  return { ctx, calls, cloud, kv, P: ctx.AXPlatform, SH: ctx.StarHermit, S: ctx.AXStore };
 }
 
 const wrap = doc => { const payload = JSON.stringify(doc); return JSON.stringify({ sum: 'x', payload }); };
@@ -125,4 +130,54 @@ test('account strings exist in every required locale', async () => {
   const keys = Object.keys(PLATFORM_STRINGS['en-US']);
   for (const loc of ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'])
     for (const k of keys) assert.ok(PLATFORM_STRINGS[loc] && PLATFORM_STRINGS[loc][k], loc + '.' + k);
+});
+
+test('save conflict: the cloud copy is reloaded and handed to the game for merging', async () => {
+  const token = jwt({ sub: USER, game_scope: SLUG, exp: Math.floor(Date.now() / 1000) + 3600 });
+  const { P, SH, S, cloud } = boot({ hash: '#game_token=' + token });
+  const conflicts = [];
+  await P.init({ onConflict: raw => conflicts.push(raw) });
+  const mine = S.fresh(); mine.progress.journeyStars = { j01: 3 }; mine.progress.stats.rounds = 4;
+  const theirs = S.fresh(); theirs.progress.journeyStars = { j01: 1, j02: 2 }; theirs.progress.endlessBest = 900;
+  theirs.progress.stats.rounds = 7; theirs.settings.music = 0;
+  const wrapDoc = d => { const payload = JSON.stringify(d); return JSON.stringify({ sum: S.checksum(payload), payload }); };
+  // another device wrote first: the next conditional PUT is refused
+  cloud.bytes = null;
+  P.onLocalSave(wrapDoc(mine));
+  await P.flushCloud();
+  cloud.conflict = true;
+  P.onLocalSave(wrapDoc(mine));
+  // the reload after the refused write reads the other device's save
+  const other = boot({ hash: '#game_token=' + token });
+  await other.P.init();
+  other.P.onLocalSave(wrapDoc(theirs)); await other.P.flushCloud();
+  cloud.bytes = other.cloud.bytes;
+  await P.flushCloud();
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(SH.saveConflicted(), false, 'reload clears the conflict');
+  assert.equal(conflicts.length, 1);
+  const merged = S.mergeDocs(S.loadRaw(conflicts[0]), mine);
+  assert.deepEqual(JSON.parse(JSON.stringify(merged.progress.journeyStars)), { j01: 3, j02: 2 });
+  assert.equal(merged.progress.endlessBest, 900);
+  assert.equal(merged.progress.stats.rounds, 7);
+  assert.equal(merged.settings.music, mine.settings.music, 'local settings kept');
+});
+
+test('every player-facing string exists in all nine locales', async () => {
+  const ctx = { URLSearchParams, location: { search: '' }, navigator: { languages: ['en-US'] } };
+  ctx.window = ctx; vm.createContext(ctx);
+  for (const f of ['sh-language.js', 'js/i18n.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
+  const S = ctx.AXI18n.strings, keys = Object.keys(S['en-US']);
+  assert.deepEqual([...ctx.AXI18n.locales], ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']);
+  for (const loc of ctx.AXI18n.locales) for (const k of keys) assert.ok(S[loc][k], loc + '.' + k);
+  // every journey stage, challenge, lesson and theme has a translated name
+  ctx.self = ctx;
+  for (const f of ['js/rng.js', 'js/content.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
+  const content = ctx.AXContent;
+  for (const loc of ctx.AXI18n.locales) {
+    for (const l of content.JOURNEY) { assert.ok(S[loc]['j.' + l.id]); if (l.intro) assert.ok(S[loc]['ji.' + l.id], loc + ' ji.' + l.id); }
+    for (const c of content.CHALLENGES) assert.ok(S[loc]['ch.' + c.id] && S[loc]['chi.' + c.id]);
+    for (const l of content.tutorialLessons()) assert.ok(S[loc]['lt.' + l.id] && S[loc]['lx.' + l.id]);
+    for (const th of content.THEMES) assert.ok(S[loc]['theme.' + th.id]);
+  }
 });

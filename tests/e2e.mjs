@@ -16,8 +16,10 @@
  * surface the Hint button uses). Every action is a real click/tap/key
  * press on visible elements; no game code is modified.
  *
- * Note: this build has no localization switcher; language coverage is
- * not exercised here.
+ * Language: a signed-in pass (stubbed StarHermit API) checks that Automatic
+ * follows the account's preferred language, that choosing another language
+ * in Settings re-renders the running round live and saves ui.language, and
+ * that Report a problem posts a bug report.
  *
  * Run: npm run test:e2e
  */
@@ -26,6 +28,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stubStarHermit, launchToken } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT = (stage, vp) => `/tmp/arrow-exodus-e2e-${stage}-${vp}.png`;
@@ -339,6 +342,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
   }
 
   await graphicsPass(page, name);
+  await languagePass(page, name);
 
   await context.close();
   if (errors.length) throw new Error(`${name} pass had page errors:\n  ${errors.join('\n  ')}`);
@@ -408,6 +412,58 @@ async function graphicsPass(page, name) {
   ok(`${name}: live Ultra → Low switch in play, renders with no console output`);
 }
 
+// ---------- language preference + report a problem (signed in, stubbed API) ----------
+async function languagePass(page, name) {
+  const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+  await page.goto('about:blank');
+  await page.goto((await BASE_URL) + '/index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+  await installProbe(page);
+  await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+  const playLabel = (await page.textContent('[data-screen="title"] [data-action="play"]')).trim();
+  if (playLabel !== 'Jouer') throw new Error(`title not in fr-CA: "${playLabel}"`);
+  ok(`${name}: Automatic follows the StarHermit preferred language (fr-CA)`);
+
+  // start a round, then change the language from Settings in the pause menu
+  await page.click('[data-screen="title"] [data-action="play"]');
+  await page.waitForFunction(() => !!window.__axProbe?.state && document.querySelector('#canvas-host canvas'));
+  if (!/^Périple \d+ — /.test(await page.textContent('#hud-title'))) throw new Error('HUD title not localized');
+  const seq0 = (await probeSummary(page)).seq;
+  await page.click('[data-action="pause"]');
+  await overlayVisible(page, 'pause-overlay');
+  await page.click('#pause-overlay [data-action="settings"]');
+  await overlayVisible(page, 'settings-overlay');
+  const choice = page.locator('#settings-overlay [data-game-language="choice"]');
+  await choice.scrollIntoViewIfNeeded();
+  const autoLabel = await choice.locator('option').first().textContent();
+  if (!/^Automatique — Français \(Canada\)$/.test(autoLabel)) throw new Error(`Automatic label not resolved: "${autoLabel}"`);
+  await choice.selectOption('it-IT');
+  await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+  await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]').textContent));
+  if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+  if ((await page.textContent('#settings-title')) !== 'Impostazioni') throw new Error('settings title not re-rendered');
+  if ((await page.textContent('label[for="set-muted"]')) !== 'Disattiva tutto l’audio') throw new Error('settings rows not re-rendered');
+  if (!/^Viaggio \d+ — /.test(await page.textContent('#hud-title'))) throw new Error('HUD title not re-rendered');
+  if (!/frecce rimaste/.test(await page.textContent('#hud-status'))) throw new Error('HUD status not re-rendered');
+  if ((await page.textContent('#pause-overlay [data-action="resume"]')) !== 'Riprendi') throw new Error('pause menu not re-rendered');
+  if ((await probeSummary(page)).seq !== seq0) throw new Error('round restarted on language change');
+  ok(`${name}: Settings → Language switches to it-IT live (HUD, pause, settings) and saves ui.language`);
+
+  await page.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+  await page.fill('[data-game-report="title"]', 'Test report');
+  await page.click('[data-game-report="send"]');
+  await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+  if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+  await page.screenshot({ path: SHOT('language', name) });
+  ok(`${name}: Report a problem posts a bug report`);
+
+  await choice.selectOption('auto');
+  await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('settings-overlay').style.display === 'none');
+  await page.click('#pause-overlay [data-action="resume"]');
+  await page.unroute(/\/api\/v1\//);
+}
+
 // ---------- main ----------
 const BASE_URL = new Promise((resolve) => {
   server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${server.address().port}`));
@@ -419,9 +475,9 @@ try {
     executablePath: '/usr/bin/google-chrome',
     args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
-  await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
+  await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 }, locale: 'en-US' }, { full: true });
   await runPass(browser, 'mobile',
-    { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { full: false });
+    { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, locale: 'en-US' }, { full: false });
   console.log('\nE2E PASS — arrow-exodus, desktop + mobile, no page errors');
 } finally {
   if (browser) await browser.close();

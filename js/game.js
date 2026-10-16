@@ -10,6 +10,10 @@ const AXContent = window.AXContent;
 const AXStore = window.AXStore;
 const AXRNG = window.AXRNG;
 const AXPlatform = window.AXPlatform;
+const AXI18n = window.AXI18n;
+/** Localized string (js/i18n.js); `fallback` covers content without a translation key. */
+const t = (key, vars, fallback) => (AXI18n ? AXI18n.t(key, vars, fallback) : (fallback != null ? fallback : key));
+const curLang = () => (AXI18n ? AXI18n.lang : 'en-US');
 
 // ---------- module-level state ----------
 let renderer3d = null;      // three.js render handle (createRenderer result) or null if unavailable
@@ -41,7 +45,7 @@ function elapsedMs() {
 }
 
 // ---------- account / sync status line (title screen) ----------
-const PS = platformStrings(typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+let PS = platformStrings(curLang());
 let signedOutNotice = false;
 
 function renderAccountLine() {
@@ -97,16 +101,14 @@ function fillPanels() {
   const p = doc.progress;
   const stars = Object.values(p.journeyStars).reduce((a, b) => a + b, 0);
   const done = Object.keys(p.journeyStars).length;
-  $('ji-summary').textContent =
-    'Stage ' + (nextJourneyIndex() + 1) + ' of ' + AXContent.JOURNEY.length +
-    ' · ' + done + ' cleared · ' + stars + ' stars earned.';
+  $('ji-summary').textContent = t('ji.summary',
+    { n: nextJourneyIndex() + 1, total: AXContent.JOURNEY.length, done: done, stars: stars });
 
   const pi = $('pi-list');
   pi.innerHTML = '';
   AXContent.PRACTICE.forEach(pr => {
-    const b = el('button', 'btn', pr.name + ' — ' + pr.board.rows + '×' + pr.board.cols +
-      ', ' + pr.arrows + ' arrows' + (pr.bolts ? ', ' + pr.bolts + ' bolts' : '') +
-      (pr.bigs ? ', ' + pr.bigs + ' big' : ''));
+    const b = el('button', 'btn', t('pi.line', { name: practiceName(pr), rows: pr.board.rows, cols: pr.board.cols, arrows: pr.arrows }) +
+      (pr.bolts ? t('pi.bolts', { n: pr.bolts }) : '') + (pr.bigs ? t('pi.bigs', { n: pr.bigs }) : ''));
     b.setAttribute('data-action', 'practice-start');
     b.setAttribute('data-id', pr.id);
     pi.appendChild(el('div', 'row')).appendChild(b);
@@ -116,23 +118,38 @@ function fillPanels() {
   ci.innerHTML = '';
   AXContent.CHALLENGES.forEach(ch => {
     const best = p.challengeBest[ch.id];
-    const b = el('button', 'btn', ch.name + (best ? ' · best ' + best : ''));
+    const b = el('button', 'btn', challengeName(ch) + (best ? t('ci.best', { n: best }) : ''));
     b.setAttribute('data-action', 'challenge-start');
     b.setAttribute('data-id', ch.id);
     const wrap = el('div', 'row');
     wrap.appendChild(b);
-    wrap.appendChild(el('span', 'muted small', ch.intro));
+    wrap.appendChild(el('span', 'muted small', challengeIntro(ch)));
     ci.appendChild(wrap);
   });
 
-  $('sci-summary').textContent = AXContent.SCORE_CHASE.intro +
-    ' Local best: ' + (p.endlessBest || 0) + '.';
+  $('sci-summary').textContent = t('score.intro', null, AXContent.SCORE_CHASE.intro) +
+    ' ' + t('sci.best', { n: p.endlessBest || 0 });
 
   const aCount = Object.keys(p.achievements).length;
-  $('pf-summary').textContent =
-    p.stats.rounds + ' rounds · ' + p.stats.wins + ' wins · ' + p.stats.exits +
-    ' arrows launched · best combo ' + p.stats.bestCombo + ' · ' +
-    aCount + '/' + AXContent.ACHIEVEMENTS.length + ' achievements.';
+  $('pf-summary').textContent = t('pf.summary', { rounds: p.stats.rounds, wins: p.stats.wins,
+    exits: p.stats.exits, combo: p.stats.bestCombo, a: aCount, total: AXContent.ACHIEVEMENTS.length });
+}
+
+// ---------- localized content names (content.js keeps the English data) ----------
+function stageName(lvl) { return t('j.' + lvl.id, null, lvl.name); }
+function stageIntro(lvl) { return lvl.intro ? t('ji.' + lvl.id, null, lvl.intro) : ''; }
+function challengeName(ch) { return t('ch.' + ch.id, null, ch.name); }
+function challengeIntro(ch) { return t('chi.' + ch.id, null, ch.intro); }
+function practiceName(pr) { return t('pr.' + pr.id, null, pr.name); }
+function lessonTitle(ls) { return t('lt.' + ls.id, null, ls.title); }
+function lessonText(ls) { return t('lx.' + ls.id, null, ls.text); }
+function themeName(th) { return t('theme.' + th.id, null, th.name); }
+
+// Round title/subtitle are functions of the context so a language change re-renders them.
+function renderHudLabels() {
+  if (!round) return;
+  $('hud-title').textContent = round.ctx.label();
+  $('hud-subtitle').textContent = round.ctx.sub ? round.ctx.sub() : '';
 }
 
 // ---------- round lifecycle ----------
@@ -162,8 +179,7 @@ function startRound(baseCfg, ctx) {
   };
 
   showScreen('play');
-  $('hud-title').textContent = ctx.label;
-  $('hud-subtitle').textContent = ctx.sub || '';
+  renderHudLabels();
 
   const host = $('canvas-host');
   host.innerHTML = '';
@@ -177,9 +193,9 @@ function startRound(baseCfg, ctx) {
     renderer3d.buildBoard(state);
     renderer3d.syncState(state, [], true, freeIds(state));
   } else {
-    host.appendChild(el('p', 'muted',
-      '3D rendering is unavailable in this browser, so the plate cannot be shown. ' +
-      'Your progress and settings are preserved.'));
+    const msg = el('p', 'muted', t('noWebgl'));
+    msg.setAttribute('data-i18n', 'noWebgl');
+    host.appendChild(msg);
   }
 
   buildHud();
@@ -190,13 +206,13 @@ function startRound(baseCfg, ctx) {
 
 function startJourney(idx) {
   const lvl = AXContent.JOURNEY[idx];
-  startRound(lvl, { kind: 'journey', label: 'Journey ' + (idx + 1) + ' — ' + lvl.name, sub: lvl.intro, index: idx });
+  startRound(lvl, { kind: 'journey', label: () => t('label.journey', { n: idx + 1, name: stageName(lvl) }), sub: () => stageIntro(lvl), index: idx });
 }
 
 function startLesson(idx) {
   const lessons = AXContent.tutorialLessons();
   const ls = lessons[idx];
-  startRound(ls.cfg, { kind: 'tutorial', label: 'Learn — ' + ls.title, sub: ls.text, lesson: ls, index: idx });
+  startRound(ls.cfg, { kind: 'tutorial', label: () => t('label.learn', { name: lessonTitle(ls) }), sub: () => lessonText(ls), lesson: ls, index: idx });
 }
 
 function firstUnfinishedLesson() {
@@ -220,10 +236,10 @@ function buildHud() {
     b.setAttribute('data-action', action);
     row.appendChild(b);
   };
-  if (round.cfg.mechanics && round.cfg.mechanics.hint) add('hint', 'Hint (H)');
-  if (round.cfg.mechanics && round.cfg.mechanics.undo) add('undo', 'Undo (U)');
-  add('restart', 'Restart');
-  add('pause', 'Pause (Esc)');
+  if (round.cfg.mechanics && round.cfg.mechanics.hint) add('hint', t('hud.hint'));
+  if (round.cfg.mechanics && round.cfg.mechanics.undo) add('undo', t('hud.undo'));
+  add('restart', t('restart'));
+  add('pause', t('hud.pause'));
   hud.appendChild(row);
 }
 
@@ -233,13 +249,13 @@ function updateHud() {
   const left = s.pieces.length;
   // score.total is finalized only at the end; show the live sum mid-round
   const live = s.score.exitPoints + s.score.perfectBonus + s.score.timeBonus + s.score.waveBonus;
-  let txt = 'Score ' + live + ' · ' + left + (left === 1 ? ' arrow' : ' arrows') + ' left · ' +
-    s.invalid + (s.invalid === 1 ? ' mistake' : ' mistakes') + ' · ' + fmtTime(elapsedMs());
+  let txt = t('hud.score', { n: live }) + ' · ' + t(left === 1 ? 'hud.left1' : 'hud.leftN', { n: left }) + ' · ' +
+    t(s.invalid === 1 ? 'hud.mist1' : 'hud.mistN', { n: s.invalid }) + ' · ' + fmtTime(elapsedMs());
   if (s.cfg.timeLimitSec) {
     const remain = s.cfg.timeLimitSec * 1000 - elapsedMs();
-    txt += ' · limit ' + fmtTime(Math.max(0, remain));
+    txt += ' · ' + t('hud.limit', { t: fmtTime(Math.max(0, remain)) });
   }
-  if (s.cfg.endless) txt += ' · plate ' + s.endlessWave;
+  if (s.cfg.endless) txt += ' · ' + t('hud.plate', { n: s.endlessWave });
   $('hud-status').textContent = txt;
 }
 
@@ -386,10 +402,16 @@ function resume() {
 let settingsOpener = null;   // element to return focus to
 let captionTimer = 0;
 
+// audio.js names cues in English; captions show them in the current language.
+const CAPTION_KEYS = {
+  'arrow launched': 'cap.launch', 'big arrow launched': 'cap.launchBig', 'lane blocked': 'cap.blocked',
+  'not allowed': 'cap.invalid', 'new plate': 'cap.wave', 'plate cleared': 'cap.win', 'round lost': 'cap.lose',
+  'undo': 'cap.undo', 'hint': 'cap.hint', 'ten seconds left': 'cap.warning'
+};
 function showCaption(text) {
   const c = $('caption-line');
   if (!c) return;
-  c.textContent = text;
+  c.textContent = CAPTION_KEYS[text] ? t(CAPTION_KEYS[text]) : text;
   clearTimeout(captionTimer);
   captionTimer = setTimeout(() => { c.textContent = ''; }, 1800);
 }
@@ -397,7 +419,7 @@ function showCaption(text) {
 // ---------- graphics settings (model in js/gfx.js, strings in js/gfx-i18n.js) ----------
 let appliedGfx = '';          // last graphics JSON pushed to the live renderer
 let appliedTheme = '';
-const GS = gfxStrings(typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+let GS = gfxStrings(curLang());
 
 /** Saved graphics settings in the shape gfx.resolve() expects. */
 function gfxSaved() {
@@ -480,6 +502,21 @@ function buildGraphicsSection() {
   sec.appendChild(sum);
   const note = el('p', 'small gfx-note', GS.postFailed); note.id = 'gfx-note'; note.hidden = true;
   sec.appendChild(note);
+  settingsRelabel.push(() => {
+    h.textContent = GS.section;
+    const label = (id, text) => { const l = sec.querySelector('label[for="' + id + '"]'); if (l) l.textContent = text; };
+    label('set-tier', GS.quality); label('gfx-scale', GS.renderScale);
+    label('gfx-adaptive', GS.adaptive); label('gfx-fps', GS.showFps);
+    tier.options[0].textContent = GS.auto.replace('{tier}', tierName(det));
+    PRESETS.forEach((p, i) => { tier.options[i + 1].textContent = tierName(p); });
+    Object.keys(CATEGORIES).forEach(cat => {
+      label('gfx-' + cat, GS.cat[cat] || cat);
+      const sel = $('gfx-' + cat);
+      if (sel) CATEGORIES[cat].forEach((tv, i) => { sel.options[i + 1].textContent = tierName(tv); });
+    });
+    note.textContent = GS.postFailed;
+    refreshGraphicsSection();
+  });
   return sec;
 }
 
@@ -501,7 +538,7 @@ function refreshGraphicsSection() {
     const ratio = Math.min(window.devicePixelRatio || 1, r.maxDpr) * r.scale;
     px = [Math.round(side * ratio), Math.round(side * ratio)];
   }
-  $('gfx-summary').textContent = [gpuInfo().gpu || 'unknown GPU', describe(r, px, GS.cost)].join(' · ');
+  $('gfx-summary').textContent = [gpuInfo().gpu || t('unknownGpu'), describe(r, px, GS.cost)].join(' · ');
   $('gfx-summary').setAttribute('data-gfx-preset', r.preset);
   $('gfx-note').hidden = !(info && info.postFailed);
 }
@@ -539,15 +576,26 @@ function setRow(labelTxt, control) {
   return row;
 }
 
+// Settings rows whose label comes from js/i18n.js carry data-i18n, so a language
+// change relabels them in place (the open dialog and its focus survive).
+function i18nRow(key, control) {
+  const row = setRow(t(key), control);
+  row.querySelector('label').setAttribute('data-i18n', key);
+  return row;
+}
+let settingsRelabel = [];   // relabel callbacks for code-built settings text (theme names, Graphics)
+
 function buildSettingsOverlay() {
+  settingsRelabel = [];
   const ov = el('div', 'modal-backdrop');
   ov.id = 'settings-overlay';
   const card = el('div', 'modal card');
   card.setAttribute('role', 'dialog');
   card.setAttribute('aria-modal', 'true');
   card.setAttribute('aria-labelledby', 'settings-title');
-  const h = el('h2', null, 'Settings');
+  const h = el('h2', null, t('settings'));
   h.id = 'settings-title';
+  h.setAttribute('data-i18n', 'settings');
   card.appendChild(h);
 
   const s = doc.settings;
@@ -559,32 +607,39 @@ function buildSettingsOverlay() {
     r.min = '0'; r.max = '1'; r.step = '0.05'; r.value = String(v); return r;
   };
 
-  card.appendChild(setRow('Mute all audio', check('set-muted', s.muted)));
-  card.appendChild(setRow('Music volume', slider('set-music', s.music)));
-  card.appendChild(setRow('Effects volume', slider('set-effects', s.effects)));
-  card.appendChild(setRow('Ambience volume', slider('set-ambience', s.ambience)));
-  card.appendChild(setRow('Voice volume', slider('set-voice', s.voice)));
-  card.appendChild(setRow('Captions for sound cues', check('set-captions', s.captions)));
+  card.appendChild(i18nRow('set.mute', check('set-muted', s.muted)));
+  card.appendChild(i18nRow('set.music', slider('set-music', s.music)));
+  card.appendChild(i18nRow('set.effects', slider('set-effects', s.effects)));
+  card.appendChild(i18nRow('set.ambience', slider('set-ambience', s.ambience)));
+  card.appendChild(i18nRow('set.voice', slider('set-voice', s.voice)));
+  card.appendChild(i18nRow('set.captions', check('set-captions', s.captions)));
 
   const stars = Object.values(doc.progress.journeyStars).reduce((a, b) => a + b, 0);
   const theme = el('select'); theme.id = 'set-theme';
-  AXContent.THEMES.forEach(t => {
-    const locked = stars < t.unlockStars;
-    const o = el('option', null, t.name + (locked ? ' (unlock at ' + t.unlockStars + ' stars)' : ''));
-    o.value = t.id;
+  AXContent.THEMES.forEach(th => {
+    const locked = stars < th.unlockStars;
+    const o = el('option', null, '');
+    o.value = th.id;
     if (locked) o.disabled = true;
     theme.appendChild(o);
   });
+  const labelThemes = () => AXContent.THEMES.forEach((th, i) => {
+    theme.options[i].textContent = stars < th.unlockStars
+      ? t('set.locked', { name: themeName(th), n: th.unlockStars }) : themeName(th);
+  });
+  labelThemes();
+  settingsRelabel.push(labelThemes);
   theme.value = s.theme;
-  card.appendChild(setRow('Visual theme', theme));
+  card.appendChild(i18nRow('set.theme', theme));
 
-  card.appendChild(setRow('Reduced motion', check('set-motion', s.reducedMotion)));
-  card.appendChild(setRow('Larger text', check('set-large', s.largeText)));
-  card.appendChild(setRow('High contrast', check('set-contrast', s.highContrast)));
+  card.appendChild(i18nRow('set.motion', check('set-motion', s.reducedMotion)));
+  card.appendChild(i18nRow('set.large', check('set-large', s.largeText)));
+  card.appendChild(i18nRow('set.contrast', check('set-contrast', s.highContrast)));
   card.appendChild(buildGraphicsSection());
 
   const row = el('div', 'row');
-  const close = el('button', 'btn primary', 'Close');
+  const close = el('button', 'btn primary', t('close'));
+  close.setAttribute('data-i18n', 'close');
   close.setAttribute('data-action', 'settings-close');
   row.appendChild(close);
   card.appendChild(row);
@@ -708,33 +763,34 @@ function recordResult(state) {
 function scoreBreakdown(state) {
   const s = state.score;
   const lines = [
-    ['Exits', s.exits + ' → ' + s.exitPoints + ' pts'],
-    ['Best combo', '×' + s.comboBest],
-    ['Flawless bonus', s.perfectBonus + ' pts'],
-    ['Time bonus', s.timeBonus + ' pts']
+    [t('r.exits'), t('r.exitsVal', { n: s.exits, p: s.exitPoints })],
+    [t('r.combo'), '×' + s.comboBest],
+    [t('r.flawless'), t('r.pts', { n: s.perfectBonus })],
+    [t('r.timeBonus'), t('r.pts', { n: s.timeBonus })]
   ];
-  if (state.cfg.endless) lines.push(['Plates cleared', s.waves + ' → ' + s.waveBonus + ' pts']);
-  lines.push(['Mistakes', String(state.invalid)]);
-  lines.push(['Time', fmtTime(elapsedMs())]);
-  lines.push(['Total', s.total + ' pts']);
+  if (state.cfg.endless) lines.push([t('r.plates'), t('r.exitsVal', { n: s.waves, p: s.waveBonus })]);
+  lines.push([t('r.mistakes'), String(state.invalid)]);
+  lines.push([t('r.time'), fmtTime(round.endMs != null ? round.endMs : elapsedMs())]);
+  lines.push([t('r.total'), t('r.pts', { n: s.total })]);
   return lines;
 }
 
 function finishRound(state) {
   round.over = true;
   stopTimer();
+  round.endMs = elapsedMs();
   recordResult(state);
   setTimeout(() => showResults(state), 800);
 }
 
 function terminalHeadline(state) {
-  if (!state.terminal) return 'Round over';
-  if (round.timedOut) return "Time's up";
+  if (!state.terminal) return t('h.over');
+  if (round.timedOut) return t('h.timeUp');
   switch (state.terminal.reason) {
-    case AXRules.TERMINAL.CLEAR: return 'Plate cleared!';
-    case AXRules.TERMINAL.LOCKED: return 'No clear paths left';
-    case AXRules.TERMINAL.TIME: return "Time's up";
-    default: return 'Round resigned';
+    case AXRules.TERMINAL.CLEAR: return t('h.clear');
+    case AXRules.TERMINAL.LOCKED: return t('h.locked');
+    case AXRules.TERMINAL.TIME: return t('h.timeUp');
+    default: return t('h.resigned');
   }
 }
 
@@ -771,47 +827,61 @@ function overlayButton(row, action, label, primary) {
   return b;
 }
 
-function showResults(state) {
+// The open results/lesson card re-renders from this on a language change.
+let resultsView = null;
+
+function showResults(state, rerender) {
   if (!round) return;
-  closeOverlays();
+  if (!rerender) closeOverlays();
+  resultsView = () => showResults(state, true);
   const won = !!(state.terminal && state.terminal.won);
   const art = won ? '/assets/plate-cleared.webp'
     : (state.terminal && state.terminal.reason === AXRules.TERMINAL.LOCKED ? '/assets/no-lanes.webp' : null);
   const row = fillResults($('results-overlay'), terminalHeadline(state), scoreBreakdown(state), art);
-  overlayButton(row, 'replay', 'Replay', true);
+  overlayButton(row, 'replay', t('replay'), true);
   if (round.ctx.kind === 'journey' && state.terminal && state.terminal.won &&
       round.ctx.index + 1 < AXContent.JOURNEY.length)
-    overlayButton(row, 'next', 'Next stage');
-  overlayButton(row, 'results-modes', 'Back to Modes');
-  overlayButton(row, 'quit-play', 'Title');
-  if (round.ctx.kind !== 'practice') postToLeaderboard(row, state.score.total);
+    overlayButton(row, 'next', t('nextStage'));
+  overlayButton(row, 'results-modes', t('backModes'));
+  overlayButton(row, 'quit-play', t('titleBtn'));
+  if (round.ctx.kind !== 'practice') postToLeaderboard(row, state.score.total, rerender);
   openOverlay('results-overlay');
 }
 
 // Hosted play only: post the round total and show the player's board rank
 // on the results card. Standalone shows nothing and makes no request.
-function postToLeaderboard(row, total) {
+let lbResult = null;   // last leaderboard outcome, kept so a re-render never posts twice
+function postToLeaderboard(row, total, rerender) {
   if (!AXPlatform.hosted) return;
   const line = el('p', 'small', PS.lbPosting);
   line.id = 'results-lb';
   line.setAttribute('aria-live', 'polite');
   row.parentNode.insertBefore(line, row);
-  AXPlatform.submitScore(total).then(r => {
-    line.textContent = !r.posted ? PS.lbNotPosted
+  const show = r => {
+    line.textContent = !r ? PS.lbPosting : !r.posted ? PS.lbNotPosted
       : r.rank ? PS.lbRank.replace('{rank}', r.rank) : PS.lbPosted;
+  };
+  if (rerender) { show(lbResult); return; }
+  lbResult = null;
+  AXPlatform.submitScore(total).then(r => {
+    lbResult = r;
+    const current = $('results-lb');
+    if (current) show(r); else line.textContent = '';
+    if (current && current !== line) current.textContent = line.textContent;
   });
 }
 
-function showLessonComplete() {
+function showLessonComplete(rerender) {
   if (!round) return;
-  closeOverlays();
-  const row = fillResults($('results-overlay'), 'Lesson complete',
-    [[round.lesson.title, 'done']], '/assets/plate-cleared.webp');
+  if (!rerender) closeOverlays();
+  resultsView = () => showLessonComplete(true);
+  const row = fillResults($('results-overlay'), t('lessonComplete'),
+    [[lessonTitle(round.lesson), t('done')]], '/assets/plate-cleared.webp');
   const lessons = AXContent.tutorialLessons();
   if (round.ctx.index + 1 < lessons.length)
-    overlayButton(row, 'next', 'Next lesson', true);
-  overlayButton(row, 'results-modes', 'Back to Modes');
-  overlayButton(row, 'quit-play', 'Title');
+    overlayButton(row, 'next', t('nextLesson'), true);
+  overlayButton(row, 'results-modes', t('backModes'));
+  overlayButton(row, 'quit-play', t('titleBtn'));
   openOverlay('results-overlay');
 }
 
@@ -821,7 +891,7 @@ const actions = {
   'daily': () => actions['daily-mode'](),
   'daily-mode': () => {
     const cfg = AXContent.dailyConfig(AXContent.utcDateString());
-    startRound(cfg, { kind: 'daily', label: cfg.name, sub: cfg.intro });
+    startRound(cfg, { kind: 'daily', label: () => t('daily.name', { date: cfg.date }), sub: () => t('daily.intro', null, cfg.intro) });
   },
   'journey-info': () => showScreen('journey-info'),
   'journey': () => showScreen('journey-info'),
@@ -831,7 +901,7 @@ const actions = {
   'challenge-info': () => showScreen('challenge-info'),
   'score-chase-info': () => showScreen('score-chase-info'),
   'start-score-chase': () =>
-    startRound(AXContent.SCORE_CHASE, { kind: 'score', label: 'Score Chase — Endless Plates', sub: AXContent.SCORE_CHASE.intro }),
+    startRound(AXContent.SCORE_CHASE, { kind: 'score', label: () => t('label.score'), sub: () => t('score.intro', null, AXContent.SCORE_CHASE.intro) }),
   'profile': () => showScreen('profile-info'),
   'sign-in': () => AXPlatform.signIn(),
   'invite': () => copyInvite(),
@@ -839,11 +909,11 @@ const actions = {
   'back-modes': () => showScreen('modes'),
   'practice-start': id => {
     const pr = AXContent.PRACTICE.find(p => p.id === id);
-    if (pr) startRound(pr, { kind: 'practice', label: 'Practice — ' + pr.name, sub: 'Relaxed play. No effect on rating.' });
+    if (pr) startRound(pr, { kind: 'practice', label: () => t('label.practice', { name: practiceName(pr) }), sub: () => t('practice.sub') });
   },
   'challenge-start': id => {
     const ch = AXContent.CHALLENGES.find(c => c.id === id);
-    if (ch) startRound(ch, { kind: 'challenge', label: 'Challenge — ' + ch.name, sub: ch.intro });
+    if (ch) startRound(ch, { kind: 'challenge', label: () => t('label.challenge', { name: challengeName(ch) }), sub: () => challengeIntro(ch) });
   },
   'hint': () => hint(),
   'undo': () => undo(),
@@ -929,6 +999,39 @@ function onKeyDown(e) {
   }
 }
 
+function fillPause() {
+  const pauseRow = fillResults($('pause-overlay'), t('paused'), []);
+  overlayButton(pauseRow, 'resume', t('resume'), true);
+  overlayButton(pauseRow, 'restart', t('restart'));
+  overlayButton(pauseRow, 'settings', t('settings'));
+  overlayButton(pauseRow, 'resign', t('resign'));
+  overlayButton(pauseRow, 'quit-play', t('quitTitle'));
+}
+
+// Language change (Settings → Language, or the account preference arriving):
+// js/i18n.js has re-applied [data-i18n]; re-render text built here without
+// touching the round, timers or the renderer.
+function onLanguageChange() {
+  PS = platformStrings(curLang());
+  GS = gfxStrings(curLang());
+  renderAccountLine();
+  if (doc) fillPanels();
+  if (round) {
+    renderHudLabels();
+    const focusAction = document.activeElement && document.activeElement.closest &&
+      document.activeElement.closest('#hud-bottom, #pause-overlay') ? document.activeElement.getAttribute('data-action') : null;
+    buildHud();
+    updateHud();
+    const pauseShown = $('pause-overlay').style.display === 'flex';
+    fillPause();
+    if (focusAction) { const b = document.querySelector('[data-action="' + focusAction + '"]'); if (b) b.focus(); }
+    if (pauseShown) openOverlay('pause-overlay');
+    if ($('results-overlay').style.display === 'flex' && resultsView) { resultsView(); openOverlay('results-overlay'); }
+  }
+  settingsRelabel.forEach(fn => fn());
+}
+document.addEventListener('ax-language', onLanguageChange);
+
 // ---------- init ----------
 async function init() {
   doc = AXStore.load();
@@ -939,12 +1042,7 @@ async function init() {
   const pauseOverlay = el('div', 'modal-backdrop');
   pauseOverlay.id = 'pause-overlay';
   playScreen.appendChild(pauseOverlay);
-  const pauseRow = fillResults(pauseOverlay, 'Paused', []);
-  overlayButton(pauseRow, 'resume', 'Resume', true);
-  overlayButton(pauseRow, 'restart', 'Restart');
-  overlayButton(pauseRow, 'settings', 'Settings');
-  overlayButton(pauseRow, 'resign', 'Resign');
-  overlayButton(pauseRow, 'quit-play', 'Quit to Title');
+  fillPause();
   const resultsOverlay = el('div', 'modal-backdrop');
   resultsOverlay.id = 'results-overlay';
   playScreen.appendChild(resultsOverlay);
@@ -995,7 +1093,15 @@ async function init() {
     const remoteRaw = await AXPlatform.init({
       onProfile: renderAccountLine,
       onSync: renderAccountLine,
-      onAuth: a => { if (!a.signedIn) signedOutNotice = true; renderAccountLine(); }
+      onAuth: a => { if (!a.signedIn) signedOutNotice = true; renderAccountLine(); },
+      // Another device saved first: merge both documents (better records win,
+      // local settings and the round in progress stay) and save the merge.
+      onConflict: raw => {
+        const merged = AXStore.mergeDocs(raw ? AXStore.loadRaw(raw) : null, doc);
+        doc.progress = merged.progress;
+        AXStore.save(doc);
+        fillPanels();
+      }
     });
     renderAccountLine();
     if (AXPlatform.hosted) bindings = await AXPlatform.loadBindings(DEFAULT_BINDINGS);
