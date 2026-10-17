@@ -4,7 +4,7 @@
  * `{tier}` is replaced by a translated tier name.
  */
 const en = {
-  section: 'Graphics', quality: 'Quality', auto: 'Auto (detected: {tier})',
+  level: 'Level {level}', section: 'Graphics', quality: 'Quality', auto: 'Auto (detected: {tier})',
   renderScale: 'Render scale', fromPreset: 'From preset ({tier})',
   adaptive: 'Adaptive resolution', showFps: 'Show frame rate',
   postFailed: 'Post-processing is unavailable on this device, so the plate renders without it.',
@@ -19,7 +19,7 @@ const en = {
 };
 
 const es = {
-  section: 'Gráficos', quality: 'Calidad', auto: 'Automática (detectada: {tier})',
+  level: 'Nivel {level}', section: 'Gráficos', quality: 'Calidad', auto: 'Automática (detectada: {tier})',
   renderScale: 'Escala de renderizado', fromPreset: 'Según el ajuste ({tier})',
   adaptive: 'Resolución adaptable', showFps: 'Mostrar fotogramas por segundo',
   postFailed: 'El posprocesado no está disponible en este dispositivo; la placa se muestra sin él.',
@@ -34,7 +34,7 @@ const es = {
 };
 
 const fr = {
-  section: 'Graphismes', quality: 'Qualité', auto: 'Auto (détectée : {tier})',
+  level: 'Niveau {level}', section: 'Graphismes', quality: 'Qualité', auto: 'Auto (détectée : {tier})',
   renderScale: 'Échelle de rendu', fromPreset: 'Selon le préréglage ({tier})',
   adaptive: 'Résolution adaptative', showFps: 'Afficher les images par seconde',
   postFailed: 'Le post-traitement est indisponible sur cet appareil ; la plaque s’affiche sans.',
@@ -54,7 +54,7 @@ export const GFX_STRINGS = {
   'es-419': es,
   'es-ES': Object.assign({}, es, { showFps: 'Mostrar FPS' }),
   'de-DE': {
-    section: 'Grafik', quality: 'Qualität', auto: 'Automatisch (erkannt: {tier})',
+    level: 'Stufe {level}', section: 'Grafik', quality: 'Qualität', auto: 'Automatisch (erkannt: {tier})',
     renderScale: 'Renderskalierung', fromPreset: 'Laut Voreinstellung ({tier})',
     adaptive: 'Adaptive Auflösung', showFps: 'Bildrate anzeigen',
     postFailed: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar; die Platte wird ohne sie dargestellt.',
@@ -70,7 +70,7 @@ export const GFX_STRINGS = {
   'fr-FR': fr,
   'fr-CA': Object.assign({}, fr, { showFps: 'Afficher la fréquence d’images' }),
   'pt-BR': {
-    section: 'Gráficos', quality: 'Qualidade', auto: 'Automática (detectada: {tier})',
+    level: 'Nível {level}', section: 'Gráficos', quality: 'Qualidade', auto: 'Automática (detectada: {tier})',
     renderScale: 'Escala de renderização', fromPreset: 'Conforme a predefinição ({tier})',
     adaptive: 'Resolução adaptável', showFps: 'Mostrar taxa de quadros',
     postFailed: 'O pós-processamento não está disponível neste dispositivo; a placa é exibida sem ele.',
@@ -84,7 +84,7 @@ export const GFX_STRINGS = {
       aoHigh: 'oclusão de ambiente completa', bloom: 'brilho', noAA: 'sem antisserrilhado' },
   },
   'it-IT': {
-    section: 'Grafica', quality: 'Qualità', auto: 'Automatica (rilevata: {tier})',
+    level: 'Livello {level}', section: 'Grafica', quality: 'Qualità', auto: 'Automatica (rilevata: {tier})',
     renderScale: 'Scala di rendering', fromPreset: 'Dal preset ({tier})',
     adaptive: 'Risoluzione adattiva', showFps: 'Mostra frequenza fotogrammi',
     postFailed: 'La post-elaborazione non è disponibile su questo dispositivo; la piastra viene mostrata senza.',

@@ -18,7 +18,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { detectPreset, describe, resolve, SHADOW_MAP } from './gfx.js';
+import { presetForLevel, detectLevel, describe, resolve, SHADOW_MAP } from './gfx.js';
 
 // ---------- GPU probe (one throwaway context, cached) ----------
 let gpuCache = null;
@@ -28,21 +28,28 @@ function isMobileDevice() {
       /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
   } catch (e) { return false; }
 }
-/** { gpu, detected } — the unmasked GPU name and the Auto preset it maps to. */
+/** { gpu, level, detected } — the unmasked GPU name, its StarHermit hardware level (0–20) and the
+ *  Auto preset for that level (tools/gpu-level.js, loaded as a classic script before the game). */
 export function gpuInfo() {
   if (gpuCache) return gpuCache;
-  let gpu = '';
+  let gpu = '', level = 0;
   try {
-    const c = document.createElement('canvas');
-    const gl = c.getContext('webgl2') || c.getContext('webgl');
-    if (gl) {
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      gpu = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
-      const lose = gl.getExtension('WEBGL_lose_context');
-      if (lose) lose.loseContext();
+    if (window.StarHermitGpu) {
+      const i = window.StarHermitGpu.info();
+      gpu = String(i.gpu || ''); level = i.level;
+    } else {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl2') || c.getContext('webgl');
+      if (gl) {
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        gpu = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+        const lose = gl.getExtension('WEBGL_lose_context');
+        if (lose) lose.loseContext();
+      }
+      level = detectLevel(gpu, { mobile: isMobileDevice() });
     }
-  } catch (e) { gpu = ''; }
-  gpuCache = { gpu, detected: detectPreset(gpu, { mobile: isMobileDevice() }) };
+  } catch (e) { gpu = ''; level = 0; }
+  gpuCache = { gpu, level, detected: presetForLevel(level) };
   return gpuCache;
 }
 
@@ -87,20 +94,24 @@ function canvasTex(size, paint, srgb) {
   t.anisotropy = 4;
   return t;
 }
-function makeTextures() {
+function makeTextures(size) {
+  // Sizes follow the preset budget: brushed steel `size`, grain size/2, workbench 2×size.
+  if (!size) return { brushed: null, grain: null, bench: null };
+  const k = size / 256; // patterns are authored at 256 px; feature sizes scale with the texture
   // brushed steel: long horizontal streaks, used as roughness + a faint colour modulation
-  const brushed = canvasTex(256, (d, n) => {
+  const brushed = canvasTex(size, (d, n) => {
     for (let y = 0; y < n; y++) {
-      const row = hash2(0, y) * 0.5 + hash2(1, y >> 1) * 0.3;
+      const yy = Math.floor(y / k);
+      const row = hash2(0, yy) * 0.5 + hash2(1, yy >> 1) * 0.3;
       for (let x = 0; x < n; x++) {
-        const v = 0.72 + row * 0.22 + hash2(x >> 5, y) * 0.06;
+        const v = 0.72 + row * 0.22 + hash2(Math.floor(x / k) >> 5, yy) * 0.06;
         const i = (y * n + x) * 4;
         d[i] = d[i + 1] = d[i + 2] = Math.round(v * 255); d[i + 3] = 255;
       }
     }
   }, false);
   // fine grain for enamel / cell inlays (roughness variation only)
-  const grain = canvasTex(128, (d, n) => {
+  const grain = canvasTex(size / 2, (d, n) => {
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
       const v = 0.8 + hash2(x + 7, y + 3) * 0.2;
       const i = (y * n + x) * 4;
@@ -108,12 +119,13 @@ function makeTextures() {
     }
   }, false);
   // workbench: pool of lamp light fading to the corners, with wood-like grain
-  const bench = canvasTex(512, (d, n) => {
+  const bench = canvasTex(size * 2, (d, n) => {
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
       const u = x / n - 0.5, v = y / n - 0.5;
       const r = Math.sqrt(u * u * 1.0 + v * v * 1.4);
       const pool = 1 - Math.min(1, Math.max(0, (r - 0.05) / 0.42));
-      const streak = hash2(0, y >> 1) * 0.5 + hash2(x >> 6, y) * 0.5;
+      const by = Math.floor(y / k);
+      const streak = hash2(0, by >> 1) * 0.5 + hash2(Math.floor(x / k) >> 6, by) * 0.5;
       const val = (0.35 + 0.65 * pool * pool) * (0.86 + streak * 0.14);
       const i = (y * n + x) * 4;
       d[i] = Math.round(Math.min(1, val * 1.04) * 255);
@@ -127,7 +139,8 @@ function makeTextures() {
 }
 
 // Rounded, bevelled tile slab (width along x, depth along z), base at y = 0.
-function roundedSlab(w, d, h, r, bevel) {
+function roundedSlab(w, d, h, r, bevel, lod) {
+  const L = lod || { bevel: 2, curve: 4 };
   const s = new THREE.Shape();
   const x0 = -w / 2 + bevel, x1 = w / 2 - bevel, z0 = -d / 2 + bevel, z1 = d / 2 - bevel;
   const rr = Math.max(0.001, r - bevel);
@@ -137,7 +150,7 @@ function roundedSlab(w, d, h, r, bevel) {
   s.lineTo(x0 + rr, z1); s.quadraticCurveTo(x0, z1, x0, z1 - rr);
   s.lineTo(x0, z0 + rr); s.quadraticCurveTo(x0, z0, x0 + rr, z0);
   const g = new THREE.ExtrudeGeometry(s, { depth: h - bevel * 2, bevelEnabled: true,
-    bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 4 });
+    bevelThickness: bevel, bevelSize: bevel, bevelSegments: L.bevel, curveSegments: L.curve });
   g.rotateX(Math.PI / 2);           // extrude along -y
   g.translate(0, h - bevel, 0);     // top face at y = h
   g.computeBoundingBox();
@@ -208,26 +221,34 @@ function arrowShape(len, headW, shaftW) {
   return s;
 }
 
-function geoCache() {
+// Mesh detail per preset budget ('lite' | 'standard' | 'rich'); 'standard' is the original set.
+const GEO_LOD = {
+  lite: { bevel: 1, curve: 2, arrowBevel: 0, dot: [8, 6], ring: 16, bolt: 6, stud: 6 },
+  standard: { bevel: 2, curve: 4, arrowBevel: 1, dot: [10, 8], ring: 24, bolt: 6, stud: 8 },
+  rich: { bevel: 3, curve: 8, arrowBevel: 3, dot: [16, 12], ring: 48, bolt: 12, stud: 16 },
+};
+function geoCache(variant) {
+  const L = GEO_LOD[variant] || GEO_LOD.standard;
   const g = {};
-  g.arrow = new THREE.ExtrudeGeometry(arrowShape(0.62, 0.17, 0.085),
-    { depth: 0.07, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 });
+  const arrowOpts = L.arrowBevel
+    ? { depth: 0.07, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: L.arrowBevel }
+    : { depth: 0.1, bevelEnabled: false };
+  g.arrow = new THREE.ExtrudeGeometry(arrowShape(0.62, 0.17, 0.085), arrowOpts);
   g.arrow.rotateX(-Math.PI / 2); // lie flat, tip toward -z (facing 0 / up)
-  g.arrowBig = new THREE.ExtrudeGeometry(arrowShape(0.7, 0.2, 0.1),
-    { depth: 0.07, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 });
+  g.arrowBig = new THREE.ExtrudeGeometry(arrowShape(0.7, 0.2, 0.1), arrowOpts);
   g.arrowBig.rotateX(-Math.PI / 2);
-  g.tile = roundedSlab(0.92, 0.92, 0.16, 0.1, 0.025);
-  g.tileTop = roundedSlab(0.8, 0.8, 0.06, 0.08, 0.018);
-  g.tileBigH = roundedSlab(0.92 * 2 + 0.1, 0.92, 0.16, 0.1, 0.025);
-  g.tileBigHTop = roundedSlab(0.8 * 2 + 0.18, 0.8, 0.06, 0.08, 0.018);
-  g.tileBigV = roundedSlab(0.92, 0.92 * 2 + 0.1, 0.16, 0.1, 0.025);
-  g.tileBigVTop = roundedSlab(0.8, 0.8 * 2 + 0.18, 0.06, 0.08, 0.018);
+  g.tile = roundedSlab(0.92, 0.92, 0.16, 0.1, 0.025, L);
+  g.tileTop = roundedSlab(0.8, 0.8, 0.06, 0.08, 0.018, L);
+  g.tileBigH = roundedSlab(0.92 * 2 + 0.1, 0.92, 0.16, 0.1, 0.025, L);
+  g.tileBigHTop = roundedSlab(0.8 * 2 + 0.18, 0.8, 0.06, 0.08, 0.018, L);
+  g.tileBigV = roundedSlab(0.92, 0.92 * 2 + 0.1, 0.16, 0.1, 0.025, L);
+  g.tileBigVTop = roundedSlab(0.8, 0.8 * 2 + 0.18, 0.06, 0.08, 0.018, L);
   g.cell = new THREE.PlaneGeometry(0.96, 0.96);
-  g.bolt = new THREE.CylinderGeometry(0.3, 0.34, 0.18, 6);
+  g.bolt = new THREE.CylinderGeometry(0.3, 0.34, 0.18, L.bolt);
   g.boltSlot = new THREE.BoxGeometry(0.34, 0.05, 0.07);
-  g.marker = new THREE.RingGeometry(0.3, 0.4, 24);
-  g.dot = new THREE.SphereGeometry(0.07, 10, 8);
-  g.stud = new THREE.CylinderGeometry(0.09, 0.11, 0.08, 8);
+  g.marker = new THREE.RingGeometry(0.3, 0.4, L.ring);
+  g.dot = new THREE.SphereGeometry(0.07, L.dot[0], L.dot[1]);
+  g.stud = new THREE.CylinderGeometry(0.09, 0.11, 0.08, L.stud);
   return g;
 }
 
@@ -252,6 +273,15 @@ class Particles {
     scene.add(this.points);
     this.cursor = 0;
     this.boost = 1;
+    this.active = capacity;
+  }
+  // Active pool size from the preset budget (the buffers keep their full capacity).
+  setPool(n) {
+    this.active = Math.max(1, Math.min(this.cap, n));
+    for (let i = this.active; i < this.cap; i++) { this.life[i] = 0; this.pos[i * 3 + 1] = -999; }
+    if (this.cursor >= this.active) this.cursor = 0;
+    this.points.geometry.setDrawRange(0, this.active);
+    this.points.geometry.attributes.position.needsUpdate = true;
   }
   // high: additive glowing sparks; boost > 1 pushes colours into the bloom range
   setMode(high, boost) {
@@ -265,7 +295,7 @@ class Particles {
   burst(p, color, n, spread, up) {
     const c = new THREE.Color(color);
     for (let k = 0; k < n; k++) {
-      const i = this.cursor; this.cursor = (this.cursor + 1) % this.cap;
+      const i = this.cursor; this.cursor = (this.cursor + 1) % this.active;
       this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z;
       const a = Math.random() * Math.PI * 2, r = Math.random() * spread;
       this.vel[i * 3] = Math.cos(a) * r;
@@ -279,7 +309,7 @@ class Particles {
   }
   tick(dt) {
     let any = false;
-    for (let i = 0; i < this.cap; i++) {
+    for (let i = 0; i < this.active; i++) {
       if (this.life[i] <= 0) continue;
       any = true;
       this.life[i] -= dt;
@@ -299,12 +329,16 @@ export function createRenderer(opts) {
   const Content = opts.content;
   const settings = opts.settings;
   const tweens = new Tweens();
-  const geos = geoCache();
+  const gpu = gpuInfo();
+  let q = resolve(opts.graphics || {}, gpu.detected, gpu.level); // resolved graphics settings
+  const geos = geoCache(q.budget.geometry); // mesh variant per preset budget (swapped by setGraphics)
+  let geoVariant = q.budget.geometry;
   const mats = {}; // theme materials, rebuilt on setTheme
 
-  const texs = makeTextures();
-  const gpu = gpuInfo();
-  let q = resolve(opts.graphics || {}, gpu.detected); // resolved graphics settings
+  // procedural surface textures, sized per budget (Low has none unless Surface detail is set to Detailed)
+  const texFor = (r) => r.budget.texture || (r.detail === 'detailed' ? 128 : 0);
+  let texSize = texFor(q);
+  let texs = makeTextures(texSize);
   let renderer = null;      // WebGLRenderer; recreated only when canvas MSAA must toggle
   let canvasAA = null;
   let composer = null, postKey = null, postFailed = false;
@@ -368,16 +402,19 @@ export function createRenderer(opts) {
   rimLight.position.set(-5, 4, -4);
   scene.add(keyLight, fillLight, rimLight, keyLight.target);
 
-  const particles = new Particles(scene, 400);
+  const particles = new Particles(scene, 800); // largest budget pool; the preset sets the active size
+  particles.setPool(q.budget.pool);
 
   // drifting dust motes in the lamp light ('background: animated'; off with reduced motion)
-  const MOTES = 70;
+  const MOTES = 140; // largest budget; the preset's budget sets how many drift
+  let moteCount = q.budget.motes;
   const motePos = new Float32Array(MOTES * 3), moteSeed = new Float32Array(MOTES * 3);
   for (let i = 0; i < MOTES; i++) {
     moteSeed[i * 3] = hash2(i, 1); moteSeed[i * 3 + 1] = hash2(i, 2); moteSeed[i * 3 + 2] = hash2(i, 3);
   }
   const moteGeo = new THREE.BufferGeometry();
   moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+  moteGeo.setDrawRange(0, moteCount);
   const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
     color: 0xffe2b8, size: 0.028, transparent: true, opacity: 0.28, depthWrite: false,
     blending: THREE.AdditiveBlending, sizeAttenuation: true
@@ -388,7 +425,7 @@ export function createRenderer(opts) {
   scene.add(motes);
   function tickMotes(t) {
     const W = boardDims.w + 2, H = boardDims.h + 2;
-    for (let i = 0; i < MOTES; i++) {
+    for (let i = 0; i < moteCount; i++) {
       const a = moteSeed[i * 3], b = moteSeed[i * 3 + 1], c = moteSeed[i * 3 + 2];
       const rise = ((t * (0.04 + c * 0.05) + b) % 1);
       motePos[i * 3] = (a - 0.5) * W + Math.sin(t * 0.3 + c * 20) * 0.35;
@@ -432,9 +469,12 @@ export function createRenderer(opts) {
   // Materials depend on the theme palette and on the 'detail' / 'reflections' / 'bloom' tiers.
   function buildMaterials(p) {
     for (const m of Object.values(mats)) m.dispose && m.dispose();
-    const det = q.detail === 'detailed';
+    const det = q.detail === 'detailed' && !!texs.brushed;
     const env = q.reflections === 'on';
+    // Low budget: per-vertex Lambert with no texture maps unless detail/reflections are switched on.
+    const lambert = q.budget.material === 'lambert' && !det && !env;
     const std = (o, envI) => {
+      if (lambert) return new THREE.MeshLambertMaterial({ color: o.color });
       const m = new THREE.MeshStandardMaterial(o);
       m.envMapIntensity = envI;
       return m;
@@ -447,7 +487,7 @@ export function createRenderer(opts) {
     mats.cell = std({ color: p.cell, roughness: 0.7, metalness: 0.5, roughnessMap: det ? texs.grain : null }, 0.4);
     mats.floor = std({ color: det ? new THREE.Color(p.floor).multiplyScalar(1.5) : p.floor, roughness: 0.95,
       map: det ? texs.bench : null }, 0.35);
-    const enamel = (c) => det
+    const enamel = (c) => det && !lambert
       ? Object.assign(new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.34, metalness: 0.05,
           clearcoat: 0.8, clearcoatRoughness: 0.18, roughnessMap: texs.grain }), { envMapIntensity: 0.22 })
       : std({ color: c, roughness: 0.3, metalness: 0.05 }, 0.3);
@@ -679,7 +719,7 @@ export function createRenderer(opts) {
               onDone: () => pieceGroup.remove(e.group)
             });
             const edgeP = start.clone().addScaledVector(dir, boardDims.w * 0.4);
-            particles.burst(edgeP, themeById(settings.theme).palette.accent, q.particles === 'low' ? 8 : 18, 1.2, 1.4);
+            particles.burst(edgeP, themeById(settings.theme).palette.accent, sparkCount(0), 1.2, 1.4);
           }
           if (!reducedMotion) camShake = Math.max(camShake, ev.big ? 0.08 : 0.04);
         }
@@ -715,7 +755,7 @@ export function createRenderer(opts) {
         }
         if (!reducedMotion) camShake = Math.max(camShake, 0.06);
       } else if (ev.type === 'win') {
-        particles.burst(new THREE.Vector3(0, 1.4, 0), 0xffd070, q.particles === 'low' ? 30 : 90, 3.4, 2.8);
+        particles.burst(new THREE.Vector3(0, 1.4, 0), 0xffd070, sparkCount(1), 3.4, 2.8);
         if (!reducedMotion) camShake = Math.max(camShake, 0.12);
       } else if (ev.type === 'lose') {
         if (!reducedMotion) camShake = Math.max(camShake, 0.15);
@@ -852,7 +892,8 @@ export function createRenderer(opts) {
 
   /** Apply graphics settings live: { preset, render_scale, adaptive, show_fps, <category> }. */
   function setGraphics(saved) {
-    q = resolve(saved || {}, gpu.detected);
+    q = resolve(saved || {}, gpu.detected, gpu.level);
+    applyBudget();
     makeGL();
     const sm = SHADOW_MAP[q.shadows];
     renderer.shadowMap.enabled = sm > 0;
@@ -874,8 +915,32 @@ export function createRenderer(opts) {
     size = [0, 0];            // force a resize with the new pixel ratio
   }
 
+  // Sparks per event from the budget; the 'Sparks: Low' setting uses about a third of them.
+  function sparkCount(i) {
+    const n = q.budget.sparks[i];
+    return q.particles === 'low' ? Math.max(1, Math.round(n / 3)) : n;
+  }
+
+  // Swap mesh variants and texture sizes when the preset's budget changes.
+  function applyBudget() {
+    const b = q.budget;
+    particles.setPool(b.pool);
+    moteCount = Math.min(MOTES, b.motes);
+    moteGeo.setDrawRange(0, moteCount);
+    if (texFor(q) !== texSize) {
+      for (const t of Object.values(texs)) if (t) t.dispose();
+      texSize = texFor(q); texs = makeTextures(texSize);
+    }
+    if (b.geometry !== geoVariant) {
+      const old = Object.values(geos);
+      Object.assign(geos, geoCache(b.geometry)); geoVariant = b.geometry;
+      cursorRing.geometry = geos.marker;
+      for (const g of old) g.dispose();
+    }
+  }
+
   function applyMotion() {
-    motes.visible = q.background === 'animated' && !reducedMotion;
+    motes.visible = q.background === 'animated' && !reducedMotion && moteCount > 0;
   }
 
   function fpsVisible(on) {
@@ -911,7 +976,10 @@ export function createRenderer(opts) {
         c.addPass(ao);
       }
       // high threshold: only the HDR free markers, sparks and specular glints bloom
-      if (q.bloom === 'on') c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.45, 0.35, 1.6));
+      if (q.bloom === 'on') { // bloom at the budget's fraction of the canvas resolution
+        const br = q.budget.bloomRes;
+        c.addPass(new UnrealBloomPass(new THREE.Vector2(Math.round(w * pr * br), Math.round(h * pr * br)), 0.45, 0.35, 1.6));
+      }
       c.addPass(new OutputPass());
       if (q.grade === 'on') c.addPass(new ShaderPass(GradeShader));
       if (q.antialias === 'smaa') c.addPass(new SMAAPass(w * pr, h * pr));
@@ -946,7 +1014,7 @@ export function createRenderer(opts) {
 
   function graphicsInfo() {
     return {
-      gpu: gpu.gpu || 'unknown GPU', detected: gpu.detected, resolved: q,
+      gpu: gpu.gpu || 'unknown GPU', level: gpu.level, detected: gpu.detected, resolved: q,
       summary: describe(q, [Math.round(size[0] * pixelRatio), Math.round(size[1] * pixelRatio)]),
       fps: Math.round(fps), adaptiveScale: Math.round(adaptiveScale * 100) / 100, postFailed,
     };
@@ -1027,7 +1095,7 @@ export function createRenderer(opts) {
     disposed = true;
     if (composer) composer.dispose();
     if (envRT) envRT.dispose();
-    for (const t of Object.values(texs)) t.dispose();
+    for (const t of Object.values(texs)) if (t) t.dispose();
     moteGeo.dispose(); motes.material.dispose(); particles.points.geometry.dispose(); particles.points.material.dispose();
     const fm = document.getElementById('fps-meter');
     if (fm) fm.hidden = true;

@@ -33,15 +33,58 @@ const TABLE = {
 
 export const SHADOW_MAP = { off: 0, low: 1024, medium: 2048, high: 4096 };
 
-/** Best preset for this GPU, from the unmasked renderer string when the browser exposes it. */
-export function detectPreset(gpu, opts) {
-  const g = String(gpu || '').toLowerCase();
-  let p = 'balanced';
-  if (/swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/.test(g)) p = 'low';
-  else if (/nvidia|geforce|rtx|gtx|quadro|radeon rx|radeon pro|amd radeon(?!.*graphics)|apple m\d/.test(g)) p = 'high';
-  // Touch / mobile devices never auto-select above Balanced.
-  if (opts && opts.mobile && (p === 'high' || p === 'ultra')) p = 'balanced';
-  return p;
+// Hardware level (0–20, StarHermit gpu-level.js) at which Auto starts choosing each preset.
+export const LEVELS = { low: 0, balanced: 4, high: 10, ultra: 17 };
+
+// Per-preset asset and effect budgets, each tuned to hold 60 FPS on the weakest GPU Auto gives that
+// preset (Low: level 0 phones / Intel UHD; Balanced: level 4 Iris Xe; High: level 10 GTX 1070; Ultra:
+// level 17 RTX 4080). Gameplay is identical on every preset; only these visuals change.
+//   geometry  — tile/arrow mesh variant: 'lite' (1 bevel segment, 2-segment corners, 8-sided dots),
+//               'standard' (the original meshes) or 'rich' (3 bevel segments, smooth corners and rims)
+//   material  — 'lambert' (per-vertex lighting, no textures) or 'pbr' (Standard / Physical)
+//   texture   — procedural surface texture size in px (brushed steel; grain ½, workbench 2×); 0 = none
+//   sparks    — spark particles per arrow exit / per cleared plate, scaled within the preset by the
+//               hardware level (StarHermitGpu.scaleBudget, ≤ 4×) and capped by the pool
+//   pool      — spark particle pool size
+//   motes     — drifting dust motes when Ambient motion is on
+//   bloomRes  — bloom pass resolution as a fraction of the canvas
+export const BUDGETS = {
+  low: { geometry: 'lite', material: 'lambert', texture: 0, sparks: [6, 24], pool: 160, motes: 0, bloomRes: 0.5 },
+  balanced: { geometry: 'standard', material: 'pbr', texture: 128, sparks: [10, 45], pool: 240, motes: 30, bloomRes: 0.5 },
+  high: { geometry: 'standard', material: 'pbr', texture: 256, sparks: [18, 90], pool: 400, motes: 70, bloomRes: 0.75 },
+  ultra: { geometry: 'rich', material: 'pbr', texture: 512, sparks: [28, 140], pool: 800, motes: 140, bloomRes: 1 },
+};
+
+function gpuApi() {
+  return typeof globalThis !== 'undefined' ? globalThis.StarHermitGpu : undefined;
+}
+
+/** Hardware level 0–20 for a renderer string (+ optional detectSystem() fields such as mobile). */
+export function detectLevel(gpu, system) {
+  const G = gpuApi();
+  if (!G) return 0;
+  return G.detectLevel(Object.assign({ webgl: true, webgl2: true }, system || {}, { gpu: String(gpu || '') }));
+}
+
+/** Auto preset for a hardware level. */
+export function presetForLevel(level) {
+  const G = gpuApi();
+  if (G) return G.presetForLevel(level, LEVELS);
+  return PRESETS.filter(p => LEVELS[p] <= level).pop() || 'low';
+}
+
+/** Best preset for this GPU (hardware level → preset). */
+export function detectPreset(gpu, system) {
+  return presetForLevel(detectLevel(gpu, system));
+}
+
+/** The preset's budget, with spark counts scaled for the hardware level within the preset. */
+export function budget(preset, level) {
+  const b = BUDGETS[preset] || BUDGETS.balanced;
+  const G = gpuApi();
+  const lv = Number.isFinite(level) ? level : LEVELS[preset];
+  const scale = (n) => Math.max(1, Math.min(b.pool, Math.round(G ? G.scaleBudget(n, lv, LEVELS[preset]) : n)));
+  return Object.assign({}, b, { sparks: b.sparks.map(scale) });
 }
 
 /** Normalise a stored preset name (older saves used auto/low/medium/high). */
@@ -54,7 +97,7 @@ export function normalizePreset(v) {
  * Resolve saved settings into concrete tiers.
  * `saved`: { preset: 'auto'|preset, render_scale, adaptive, show_fps, <category>: 'preset'|tier }.
  */
-export function resolve(saved, detected) {
+export function resolve(saved, detected, level) {
   const s = saved || {};
   const auto = !PRESETS.includes(s.preset);
   const preset = auto ? (PRESETS.includes(detected) ? detected : 'balanced') : s.preset;
@@ -62,6 +105,7 @@ export function resolve(saved, detected) {
   const rs = clamp(Number(s.render_scale) || 1, 0.5, 2);
   const out = { preset, auto, renderScale: rs, scale: row.scale * rs, maxDpr: row.maxDpr };
   for (const [cat, tiers] of Object.entries(CATEGORIES)) out[cat] = tiers.includes(s[cat]) ? s[cat] : row[cat];
+  out.budget = budget(preset, level);
   out.adaptive = s.adaptive !== false;
   out.showFps = !!s.show_fps;
   // Post-processing runs only when something needs it; otherwise the canvas MSAA is used.

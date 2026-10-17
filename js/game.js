@@ -428,7 +428,7 @@ function gfxSaved() {
 }
 
 function gfxResolved() {
-  return resolve(gfxSaved(), gpuInfo().detected);
+  return resolve(gfxSaved(), gpuInfo().detected, gpuInfo().level);
 }
 
 function applyGraphics() {
@@ -538,7 +538,8 @@ function refreshGraphicsSection() {
     const ratio = Math.min(window.devicePixelRatio || 1, r.maxDpr) * r.scale;
     px = [Math.round(side * ratio), Math.round(side * ratio)];
   }
-  $('gfx-summary').textContent = [gpuInfo().gpu || t('unknownGpu'), describe(r, px, GS.cost)].join(' · ');
+  $('gfx-summary').textContent = [gpuInfo().gpu || t('unknownGpu'), GS.level.replace('{level}', gpuInfo().level),
+    describe(r, px, GS.cost)].join(' · ');
   $('gfx-summary').setAttribute('data-gfx-preset', r.preset);
   $('gfx-note').hidden = !(info && info.postFailed);
 }
