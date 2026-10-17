@@ -20,6 +20,15 @@ import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { presetForLevel, detectLevel, describe, resolve, SHADOW_MAP } from './gfx.js';
 
+// EffectComposer resizes every pass to the full frame (addPass / setSize); this keeps a pass at a
+// fraction of it (used for the preset budget's bloom resolution).
+function atScale(pass, k) {
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
+
 // ---------- GPU probe (one throwaway context, cached) ----------
 let gpuCache = null;
 function isMobileDevice() {
@@ -978,7 +987,7 @@ export function createRenderer(opts) {
       // high threshold: only the HDR free markers, sparks and specular glints bloom
       if (q.bloom === 'on') { // bloom at the budget's fraction of the canvas resolution
         const br = q.budget.bloomRes;
-        c.addPass(new UnrealBloomPass(new THREE.Vector2(Math.round(w * pr * br), Math.round(h * pr * br)), 0.45, 0.35, 1.6));
+        c.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(Math.round(w * pr * br), Math.round(h * pr * br)), 0.45, 0.35, 1.6), br));
       }
       c.addPass(new OutputPass());
       if (q.grade === 'on') c.addPass(new ShaderPass(GradeShader));

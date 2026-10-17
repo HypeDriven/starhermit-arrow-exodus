@@ -334,10 +334,10 @@ QA bar as checkable statements: every button on every screen is reachable by cli
 `browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.
 
 
-**60 FPS benchmark** (`node tools/gfx-bench.mjs arrow-exodus [--mobile --presets low,balanced]`, dev-only, real GPUs; hook `tests/gfx-bench.mjs` picks the preset in Settings and keeps tapping free arrows through Journey stages). Measured 2026-10-17:
+**60 FPS benchmark** (`node tools/gfx-bench.mjs arrow-exodus [--mobile --presets low,balanced]`, dev-only, real GPUs; hook `tests/gfx-bench.mjs` picks the preset in Settings and keeps tapping free arrows through Journey stages). Measured 2026-10-17 with the revised gate (an empty full-window canvas is measured before each preset and subtracted percentile for percentile; typical p50 ≤ 12 ms and slow p90 ≤ 14 ms at the preset's floor level, CPU p90 ≤ 6 ms):
 
-- Desktop 1920×1080: PASS low (GPU p90 8.90 ms on level 2 → ≈ 13.47 ms at level 0, CPU p90 1.40 ms); PASS balanced (13.98 → ≈ 9.24 ms at level 4, CPU 2.70 ms); PASS high (27.97 → ≈ 5.34 ms at level 10, CPU 2.60 ms); PASS ultra (44.44 → ≈ 1.99 ms at level 17, CPU 2.10 ms).
-- Mobile 390×844 @3×: PASS balanced (17.26 → ≈ 11.41 ms at level 4, CPU 1.80 ms); FAIL low (17.06 → ≈ 25.82 ms at level 0, CPU 0.70 ms). Low's canvas is only 362×362 px; a blank WebGL page measures 13–15 ms on the same run, so this is the benchmark's compositor floor at DPR 3, not the plate.
+- Desktop 1920×1080: PASS low (GPU p50 9.04 / p90 11.17 ms, empty canvas 2.49 / 8.95, on level 2 → at level 0: typical 9.91, slow 3.35; CPU p90 0.90 ms); PASS balanced (typical 4.85, slow 1.56 at level 4; CPU 1.40 ms); PASS high (typical 2.32, slow 2.04 at level 10; CPU 1.10 ms); PASS ultra (typical 2.38, slow 2.99 at level 17; CPU 1.20 ms).
+- Mobile 390×844 @3×: PASS low (typical 5.36, slow 7.94 at level 0; CPU 0.70 ms); PASS balanced (typical 2.51, slow 3.91 at level 4; CPU 1.30 ms).
 
 ## Sound and frame-rate options
 
