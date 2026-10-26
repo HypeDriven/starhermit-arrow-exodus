@@ -1,0 +1,106 @@
+/* Arrow Exodus — the browser client's style sheets (index.html's <style> and
+ * css/menu.css), kept for the engine port and rewritten class-based: the
+ * converter (`npm run css`: `starhermit css` → assets/ui-style.json, which
+ * src/style.ts registers) maps classes, not ids, element or attribute
+ * selectors. The media queries, ui-scale zoom, safe-area insets, the
+ * large-text / high-contrast body classes, the Graphics panel and the fps
+ * meter are gone: the runtime gives interface and text size, high contrast,
+ * reduced motion and graphics, and src/screens.ts picks the phone and
+ * short-landscape layouts by window size. */
+* { box-sizing: border-box; }
+:root {
+  --bg: #0f1216; --panel: #1a1e24; --panel2: #232830; --line: #39414d;
+  --text: #eef1f5; --muted: #aab3bf; --accent: #f2b04e; --accent2: #7fd4c1;
+}
+
+/* ---------- shared ---------- */
+.screen { background: var(--bg); }
+.heading2 { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+.text { color: var(--text); font-size: 1rem; }
+.muted { color: var(--muted); }
+.small { font-size: 0.9rem; }
+.btn {
+  background: #2c333d; color: var(--text); padding: 10px 18px; font-size: 1rem;
+  border: none; min-height: 44px; text-align: center;
+}
+.btn:hover { background: #39424e; }
+.btn:focus-visible { outline: 3px solid var(--accent2); outline-offset: 2px; }
+.btn:disabled { opacity: 0.5; }
+.btn.primary { background: var(--accent); color: #1a1206; }
+.btn.primary:hover { background: #f5bf6a; }
+.btn-big { font-size: 1.1rem; padding: 14px 28px; }
+.btn-list { text-align: left; }
+.card { background: var(--panel); border-radius: 10px; padding: 16px; }
+
+/* ---------- title (css/menu.css) ---------- */
+.menu-screen { background: var(--bg); }
+.menu-bg { background: url(../assets/key-art.webp) center / cover no-repeat; animation: menuBgDrift 40s ease-in-out infinite alternate; }
+@keyframes menuBgDrift {
+  from { transform: scale(1.02) translate(0, 0); }
+  to { transform: scale(1.1) translate(-20px, -14px); }
+}
+.menu-vignette {
+  background:
+    linear-gradient(90deg, rgba(6, 8, 11, 0.92) 0%, rgba(6, 8, 11, 0.72) 30%, rgba(6, 8, 11, 0.25) 60%, rgba(6, 8, 11, 0.45) 100%),
+    radial-gradient(farthest-corner at 70% 40%, transparent 40%, rgba(4, 5, 8, 0.65) 100%);
+}
+.menu-vignette-phone {
+  background: linear-gradient(180deg, rgba(6, 8, 11, 0.35) 0%, rgba(6, 8, 11, 0.7) 45%, rgba(6, 8, 11, 0.92) 100%);
+}
+.menu-kicker {
+  font-size: 0.82rem; letter-spacing: 0.28em; text-transform: uppercase;
+  color: var(--accent2); font-weight: 600; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
+}
+.menu-title {
+  font-size: 4.6rem; font-weight: 800; letter-spacing: -0.01em; color: var(--text);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
+}
+.menu-rule {
+  width: 88px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  box-shadow: 0 0 14px rgba(242, 176, 78, 0.55);
+}
+.menu-tagline { color: #c8cfd8; font-size: 1.02rem; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75); }
+.menu-account { font-size: 0.88rem; color: var(--accent2); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75); }
+.menu-play {
+  background: var(--accent); color: #1a1206; border-radius: 12px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; font-size: 1.1rem; padding: 14px 28px; min-height: 44px; text-align: center;
+  box-shadow: 0 6px 28px rgba(242, 176, 78, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.menu-play:hover {
+  transform: translateY(-2px); background: #f5bb62;
+  box-shadow: 0 10px 34px rgba(242, 176, 78, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.menu-play:focus-visible { outline: 3px solid var(--accent2); outline-offset: 2px; }
+.menu-secondary {
+  border-radius: 10px; background: rgba(26, 30, 36, 0.72); border: 1px solid var(--line);
+  color: var(--text); padding: 10px 18px; min-height: 44px; font-size: 1rem; text-align: center;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.menu-secondary:hover { transform: translateY(-2px); border-color: var(--accent); background: rgba(35, 40, 48, 0.85); }
+.menu-secondary:focus-visible { outline: 3px solid var(--accent2); outline-offset: 2px; }
+.menu-blur { backdrop-filter: blur(6px); }
+
+/* ---------- play ---------- */
+.hud-title { font-size: 1.5rem; font-weight: 700; color: var(--text); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8); }
+.hud-subtitle { font-size: 0.9rem; color: var(--muted); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9); }
+.hud-status { font-size: 0.9rem; color: var(--text); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9); }
+.caption-line { font-size: 0.9rem; color: var(--accent2); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9); }
+.hud-panel { background: rgba(15, 18, 22, 0.72); border-radius: 10px; padding: 8px 12px; }
+
+/* ---------- overlays ---------- */
+.modal-backdrop { background: rgba(8, 10, 13, 0.72); }
+.modal { background: var(--panel); border-radius: 10px; padding: 16px; }
+.modal-title { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+.score-key { color: var(--muted); font-size: 0.9rem; }
+.score-val { color: var(--text); font-size: 0.9rem; }
+.result-art { border-radius: 8px; background: #0c0f13; }
+.set-row { min-height: 40px; }
+.section-title { font-size: 1.1rem; color: var(--accent); font-weight: 700; }
+.gfx-note { color: var(--accent); font-size: 0.9rem; }
+
+.toast {
+  padding: 10px 16px; background: #20262e; color: var(--text);
+  border: 1px solid var(--accent2); border-radius: 8px; font-size: 0.95rem; text-align: center;
+}

@@ -1,0 +1,12 @@
+# Development files the engine leaves out of the package (besides its default
+# rules: dot-names, node_modules/, package.json, tsconfig.json, …).
+tests/
+tools/
+node_modules/
+.local-data/
+*.log
+.DS_Store
+test-results/
+.tmp-build/
+.starhermit/
+.claude/
