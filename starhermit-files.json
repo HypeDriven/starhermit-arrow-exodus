@@ -34,7 +34,7 @@
     "sfx/time-warning.opus": {"sha256": "90d2da72a16166c865fa104f28e93d2adc52b5962ab479e2e0607fb9cb131690", "size": 11499},
     "sfx/ui-tap.opus": {"sha256": "6e0cb38e586f624548c6e839b9fee07c83e624f29f76e4be968491c90e978d6d", "size": 10739},
     "sfx/undo-swish.opus": {"sha256": "2b3e70e450334629c1c841b18184e63eab72f943600bf6f21bc3ca3942cc130f", "size": 11561},
-    "spec.md": {"sha256": "6049664c57a8acf20ddcbb5b39534383a40233cd4c23643413784d5ba958c7fe", "size": 39040},
+    "spec.md": {"sha256": "7bc3f6a36ce465658207c6236a883634945cf714ca03dd2823c29ce72d4aebcb", "size": 39040},
     "src/audio.ts": {"sha256": "ff36c9d1b286abaf4b0d36866ccadc7c128b147a6050c06ecb7a62f533983470", "size": 7122},
     "src/game.ts": {"sha256": "d43f3c3d5a64f25cb2ac47175cae8bbd4a50a425b78587f795130c110cce53c6", "size": 20015},
     "src/geometry.ts": {"sha256": "969ed071c3d593ede59ce5754d1fc4010ab07bd39a139f9406c232cda799397d", "size": 9151},

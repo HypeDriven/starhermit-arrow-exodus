@@ -9,7 +9,7 @@
 | Genre | Single-player direction/removal puzzle (perfect information, deterministic) |
 | Players | 1; a global high-score board when signed in (§12) |
 | Session | 30 s (Learn lesson) to ~4 min (7×7 Journey stage); Score Chase runs until the plate locks |
-| Platforms | StarHermit engine script game (engine 1.14.0, host API 1.15): natively in the StarHermit client, in desktop and mobile browsers on the engine's web runtime |
+| Platforms | StarHermit engine script game (engine 1.14.0, host API 1.16): natively in the StarHermit client, in desktop and mobile browsers on the engine's web runtime |
 | Rendering | `starhermit:scene` (three.js-style retained 3D scene) for the plate; every menu, HUD line and card is `starhermit:ui` (immediate mode) styled from the browser build's converted CSS |
 | Version | `starhermit.txt`: `version=1.0.0`, `contentVersion=1`, `engine.version=1.14.0`, `engine.minor=15` |
 
