@@ -1,0 +1,59 @@
+# Journey stage 1 from the title's Play to the results card, driving the real
+# UI: Play, then the plate by keyboard (an arrow key brings the focus ring to
+# the first cell, arrows move it, Enter launches the arrow under it), in the
+# order the rules engine's solver gives for the seeded stage (seed 201, so
+# the plate is the same every run). Then Next stage, the pause card and Quit
+# to Title.
+until 300 Arrow Exodus
+frames 150
+save title
+# (Play's face is letter-spaced capitals, which the script cannot click by text: Tab focuses it)
+key Tab 2
+frames 2
+key Enter 2
+until 120 Journey 1 — First Flight
+frames 30
+save journey
+key ArrowUp 2
+frames 2
+key ArrowRight 2
+frames 2
+key ArrowRight 2
+frames 2
+key ArrowRight 2
+frames 2
+key Enter 2
+frames 6
+key ArrowLeft 2
+frames 2
+key Enter 2
+frames 6
+key ArrowLeft 2
+frames 2
+key Enter 2
+frames 6
+key ArrowDown 2
+frames 2
+key ArrowRight 2
+frames 2
+key Enter 2
+frames 6
+key ArrowUp 2
+frames 2
+key ArrowLeft 2
+frames 2
+key ArrowLeft 2
+frames 2
+key Enter 2
+frames 6
+until 120 Plate cleared!
+expect Flawless bonus
+frames 150
+save results
+click Next stage
+until 120 Journey 2 — Cross Traffic
+key KeyP 2
+until 30 Resume
+save pause
+click Quit to Title
+until 60 Daily Challenge

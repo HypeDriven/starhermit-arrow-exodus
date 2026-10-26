@@ -1,0 +1,45 @@
+# Learn: the title's Journey panel, Back to Modes, the mode list, Learn's
+# first lesson played by keyboard to the lesson card, the next lesson, then a
+# hint and Restart from the HUD, the settings card from the pause card
+# (theme select, captions, the runtime's options button) and Resign to the
+# results card.
+until 300 Arrow Exodus
+frames 30
+click Journey
+until 60 Begin Journey
+click Back to Modes
+until 60 Modes
+save modes
+click Learn — interactive lessons, one rule at a time.
+until 120 Learn — Send an arrow off
+frames 10
+key ArrowUp 2
+frames 2
+key ArrowDown 2
+frames 2
+key ArrowRight 2
+frames 2
+key Enter 2
+frames 6
+until 120 Lesson complete
+save lesson
+click Next lesson
+until 120 Learn — Blocked lanes
+key KeyH 2
+frames 10
+click Restart
+frames 10
+key Escape 2
+until 30 Resume
+click Settings
+until 30 Captions for sound cues
+click Captions for sound cues
+frames 5
+save settings
+click Close
+until 30 Resume
+click Resign
+until 120 Round resigned
+save resigned
+click Back to Modes
+until 60 Modes

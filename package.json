@@ -3,8 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e": "node tests/e2e.mjs",
-    "test": "node tests/rules.test.mjs && node --test tests/gfx.test.mjs tests/platform.test.mjs"
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node tests/rules.test.mjs && node --test tests/gfx.test.mjs tests/i18n.test.mjs tests/save.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tests/browser.mjs",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "typecheck": "starhermit types . && tsc -p ."
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
