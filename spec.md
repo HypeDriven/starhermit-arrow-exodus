@@ -9,9 +9,9 @@
 | Genre | Single-player direction/removal puzzle (perfect information, deterministic) |
 | Players | 1; a global high-score board when signed in (§12) |
 | Session | 30 s (Learn lesson) to ~4 min (7×7 Journey stage); Score Chase runs until the plate locks |
-| Platforms | StarHermit engine script game (engine 1.19.1, host API 1.21): natively in the StarHermit client, in desktop and mobile browsers on the engine's web runtime |
+| Platforms | StarHermit engine script game (engine 1.22.0, host API 1.21): natively in the StarHermit client, in desktop and mobile browsers on the engine's web runtime |
 | Rendering | `starhermit:scene` (three.js-style retained 3D scene) for the plate; every menu, HUD line and card is `starhermit:ui` (immediate mode) styled from the browser build's converted CSS |
-| Version | `starhermit.txt`: `version=1.0.0`, `contentVersion=1`, `engine.version=1.19.1`, `engine.minor=15` |
+| Version | `starhermit.txt`: `version=1.0.0`, `contentVersion=1`, `engine.version=1.22.0`, `engine.minor=15` |
 
 File map (everything that ships or tests the game):
 
@@ -245,7 +245,7 @@ Nine locales ship for all player-facing text: **en-US, en-GB, es-419, es-ES, de-
 
 ## 12. StarHermit integration
 
-- **Manifest** `starhermit.txt`: `name`, `description`, `owner`, `server=score-script.js`, `version=1.0.0`, `contentVersion=1`, `cover=cover.jpg`, `launch=index.html`, `engine.api=1`, `engine.entry=src/main.ts`, `engine.version=1.19.1`, `engine.minor=15`, `engine.capabilities=platform,storage,clipboard`, eight `control.*` actions with their `engine.gamepad.*` defaults.
+- **Manifest** `starhermit.txt`: `name`, `description`, `owner`, `server=score-script.js`, `version=1.0.0`, `contentVersion=1`, `cover=cover.jpg`, `launch=index.html`, `engine.api=1`, `engine.entry=src/main.ts`, `engine.version=1.22.0`, `engine.minor=15`, `engine.capabilities=platform,storage,clipboard`, eight `control.*` actions with their `engine.gamepad.*` defaults.
 - **Platform script** `score-script.js`: a practice session that accepts `{type:'result', scores}`, range-checks each score against its board and posts it.
 - **Leaderboard**: one board, `high-score` (integer, higher is better, 0–10,000,000). When signed in, every finished Journey, Daily, Challenge or Score Chase round (won, locked, timed out or resigned) post the total (`online.submitScore`: `sessions.practice()`, `connectGame`, `{type:'result'}`, the script's `result-ack`), and the results card shows "Leaderboard rank: #N" (or "Score posted / not posted to the leaderboard."). Practice rounds and lessons post nothing; a guest makes no request.
 - **Identity**: `player()`; the title's account line reads "Playing as <nickname> · progress synced / saving… / cloud sync unavailable", or "Offline — progress is stored on this device." for a guest. Signing in is the runtime's: **Sign in with StarHermit** calls `requestSignIn()` (its Account dialog); in the StarHermit client the player is signed in from the start. When the session ends (`onSessionEnded`) the line and a toast read "Signed out of StarHermit — progress stays on this device." and play goes on.
@@ -268,7 +268,7 @@ Nine locales ship for all player-facing text: **en-US, en-GB, es-419, es-ES, de-
 
 ## 14. Testing and acceptance criteria
 
-`npm test` = `npm run test:unit` + `npm run test:native` (set `STARHERMIT` to the 1.19.1 runtime).
+`npm test` = `npm run test:unit` + `npm run test:native` (set `STARHERMIT` to the 1.22.0 runtime).
 
 - **Unit** (Node, no dependencies): `tests/rules.test.mjs` (deterministic replay hash for Journey 1; win after the solver's order; rejections without mutation; all 40 Journey stages, 6 Challenges, 3 Practice presets and 14 dailies solvable; Score Chase reaches wave 12; lesson fixtures solvable; save migration; serialize round-trip; tie-break order), `tests/gfx.test.mjs` (tier → preset rows, monotonic budgets, level scaling capped), `tests/i18n.test.mjs` (the nine locales; every locale has every key with the same placeholders; every literal key the TypeScript client uses exists), `tests/save.test.mjs` (a browser-build cloud save parses and merges, corrupt slots are ignored, engine saves merge on a conflict).
 - **Native** (`tests/native.mjs`): the committed web index matches the files (`npm run package` ran after the last change); `starhermit check .` with no warnings; every `tests/native/*.play` as a signed-out offscreen render check driving the real UI: `journey.play` (Play, Journey 1 cleared by keyboard in the solver's order, the results card with its flawless bonus, Next stage, the pause card, Quit to Title) and `learn.play` (Journey panel → Back to Modes → Learn, lesson 1 to the lesson card, Next lesson, a hint, Restart, Esc to the pause card, the Settings card with Captions, Close, Resign to the results card, Back to Modes).
