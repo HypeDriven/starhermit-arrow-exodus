@@ -812,7 +812,8 @@ export function applyLook(next: Look): void {
     denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: aoHigh ? 6 : 4, rings: 2, samples: aoHigh ? 16 : 8, radiusExponent: 2 },
   };
   // high threshold: only the HDR free markers, sparks and specular glints bloom
-  renderer.bloom = next.bloom === "on" ? { strength: 0.45, radius: 0.35, threshold: 1.6, resolution: b.bloomRes } : null;
+  // the page's r160 UnrealBloomPass strength 0.45, squared for the r185 bloom at minor 29
+  renderer.bloom = next.bloom === "on" ? { strength: 0.2, radius: 0.35, threshold: 1.6, resolution: b.bloomRes } : null;
   // render3d.js GradeShader after OutputPass: a gentle S-curve (slope 1.11 at mid-grey),
   // a touch more saturation, cool shadows / warm highlights, a soft vignette.
   renderer.grade = next.grade === "on" ? {
