@@ -12,24 +12,24 @@
 //   FXAA / canvas MSAA) is renderer.ao / bloom / grade / antialias; the
 //   grade's GLSL is the built-in display-space grade with the same curve,
 //   tints and vignette.
-// - RoomEnvironment + PMREMGenerator.fromScene (not available) is a studio
-//   latitude-longitude image prefiltered with fromEquirectangular.
-// - Light intensities are three.js r160's divided by π (the engine's convention).
-// - The canvas textures are DataTextures; the brushed steel used as a color
-//   map is sRGB-encoded (engine images are sRGB, three's CanvasTexture took
-//   it as linear).
-// - The shadow camera box (fitShadow) is the engine's view-fitted shadow
-//   distance; render scale, pixel-ratio cap and adaptive resolution are the
-//   runtime's graphics level.
+// - Lights, shadows (the fitted shadow.camera box, bias, normalBias) and the
+//   RoomEnvironment(renderer) reflections are the page's own values (engine
+//   minor 23+ follows three r155+). r160 scaled scene.environment by each
+//   material's envMapIntensity, so each standard material takes the room as
+//   its own envMap at the page's intensity.
+// - The canvas textures are DataTextures with the page's colour spaces
+//   (brushed steel as stored, the workbench sRGB; minor 28 follows colorSpace).
+// - Render scale, pixel-ratio cap and adaptive resolution are the runtime's
+//   graphics level.
 // - The camera aspect is the window's (no setViewOffset): frameBoard moves
 //   the camera and pulls it back until the plate fits the part of the window
 //   the HUD leaves free, as the square canvas host did.
 import {
   ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry,
-  DataTexture, DirectionalLight, DoubleSide, FloatType, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh,
-  MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, Object3D,
-  PMREMGenerator, PerspectiveCamera, PlaneGeometry, Points, PointsMaterial, RGBAFormat, Raycaster, RepeatWrapping,
-  ClampToEdgeWrapping, RingGeometry, SphereGeometry, Vector3, pointerToNdc, renderer, scene,
+  DataTexture, DirectionalLight, DoubleSide, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh,
+  MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, Object3D, OrthographicCamera,
+  PCFSoftShadowMap, PMREMGenerator, PerspectiveCamera, PlaneGeometry, Points, PointsMaterial, Raycaster, RepeatWrapping,
+  ClampToEdgeWrapping, RingGeometry, RoomEnvironment, SRGBColorSpace, SphereGeometry, Vector3, pointerToNdc, renderer, scene,
 } from "starhermit:scene";
 import type { Material, Texture } from "starhermit:scene";
 import { arrowGeometry, roundedSlab } from "./geometry.js";
@@ -64,7 +64,6 @@ function hash2(x: number, y: number): number {
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
-const toSrgb = (v: number): number => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
 function dataTex(size: number, paint: (d: Uint8Array, n: number) => void, wrap = true): DataTexture {
   const px = new Uint8Array(size * size * 4);
   paint(px, size);
@@ -74,25 +73,23 @@ function dataTex(size: number, paint: (d: Uint8Array, n: number) => void, wrap =
   t.generateMipmaps = true;
   return t;
 }
-interface Texs { brushed: DataTexture | null; brushedColor: DataTexture | null; grain: DataTexture | null; bench: DataTexture | null }
+interface Texs { brushed: DataTexture | null; grain: DataTexture | null; bench: DataTexture | null }
 function makeTextures(size: number): Texs {
   // Sizes follow the preset budget: brushed steel `size`, grain size/2, workbench 2×size.
-  if (!size) return { brushed: null, brushedColor: null, grain: null, bench: null };
+  if (!size) return { brushed: null, grain: null, bench: null };
   const k = size / 256; // patterns are authored at 256 px; feature sizes scale with the texture
-  const brushedPaint = (srgb: boolean) => (d: Uint8Array, n: number): void => {
+  // brushed steel: long horizontal streaks, roughness + a faint colour modulation
+  const brushed = dataTex(size, (d, n) => {
     for (let y = 0; y < n; y++) {
       const yy = Math.floor(y / k);
       const row = hash2(0, yy) * 0.5 + hash2(1, yy >> 1) * 0.3;
       for (let x = 0; x < n; x++) {
         const v = 0.72 + row * 0.22 + hash2(Math.floor(x / k) >> 5, yy) * 0.06;
         const i = (y * n + x) * 4;
-        d[i] = d[i + 1] = d[i + 2] = Math.round((srgb ? toSrgb(v) : v) * 255); d[i + 3] = 255;
+        d[i] = d[i + 1] = d[i + 2] = Math.round(v * 255); d[i + 3] = 255;
       }
     }
-  };
-  // brushed steel: long horizontal streaks, roughness + a faint colour modulation
-  const brushed = dataTex(size, brushedPaint(false));
-  const brushedColor = dataTex(size, brushedPaint(true));
+  });
   // fine grain for enamel / cell inlays (roughness variation only)
   const grain = dataTex(size / 2, (d, n) => {
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
@@ -117,7 +114,8 @@ function makeTextures(size: number): Texs {
       d[i + 3] = 255;
     }
   }, false);
-  return { brushed, brushedColor, grain, bench };
+  bench.colorSpace = SRGBColorSpace;
+  return { brushed, grain, bench };
 }
 
 // Mesh detail per preset budget ('lite' | 'standard' | 'rich'); 'standard' is the original set.
@@ -256,14 +254,14 @@ const selGroup = new Group();
 const root = new Group();
 root.add(envGroup, boardGroup, pieceGroup, selGroup);
 
-const KEY_BASE = 2.6 / PI;
+const KEY_BASE = 2.6;
 const keyLight = new DirectionalLight(0xffe0b0, KEY_BASE);
 keyLight.position.set(4, 8, 5);
-keyLight.shadow.bias = -0.0006;
-keyLight.shadow.radius = 2; // three.js PCFSoftShadowMap's soft edge
-keyLight.shadow.distance = 30;
-const fillLight = new HemisphereLight(0xfff0dd, 0x1a2028, 0.55 / PI);
-const rimLight = new DirectionalLight(0xffdcb0, 0.5 / PI);
+keyLight.shadow.bias = -0.002;
+const shadowCam = keyLight.shadow.camera as OrthographicCamera;
+shadowCam.left = -8; shadowCam.right = 8; shadowCam.top = 8; shadowCam.bottom = -8;
+const fillLight = new HemisphereLight(0xfff0dd, 0x1a2028, 0.55);
+const rimLight = new DirectionalLight(0xffdcb0, 0.5);
 rimLight.position.set(-5, 4, -4);
 
 const tweens = new Tweens();
@@ -278,7 +276,7 @@ let q: Look | null = null;
 let geos: Geos | null = null;
 let geoVariant = "";
 let texSize = -1;
-let texs: Texs = { brushed: null, brushedColor: null, grain: null, bench: null };
+let texs: Texs = { brushed: null, grain: null, bench: null };
 const mats: Record<string, Material> = {};
 let envTex: Texture | null = null;
 let theme: Theme | null = null;
@@ -346,9 +344,10 @@ function buildMaterials(p: Palette): void {
     if (lambert) return new MeshLambertMaterial({ color: o.color });
     const m = new MeshStandardMaterial({ color: o.color, roughness: o.roughness, metalness: o.metalness ?? 0, map: o.map ?? null, roughnessMap: o.roughnessMap ?? null });
     m.envMapIntensity = envI;
+    if (env) m.envMap = envTex;
     return m;
   };
-  mats.plate = std({ color: p.plate, roughness: det ? 0.5 : 0.45, metalness: 0.75, roughnessMap: det ? texs.brushed : null, map: det ? texs.brushedColor : null }, 0.55);
+  mats.plate = std({ color: p.plate, roughness: det ? 0.5 : 0.45, metalness: 0.75, roughnessMap: det ? texs.brushed : null, map: det ? texs.brushed : null }, 0.55);
   if (det) mats.plate.color.multiplyScalar(1.15);
   mats.plateEdge = std({ color: p.plateEdge, roughness: 0.6, metalness: 0.6, roughnessMap: det ? texs.brushed : null }, 0.5);
   mats.cell = std({ color: p.cell, roughness: 0.7, metalness: 0.5, roughnessMap: det ? texs.grain : null }, 0.4);
@@ -357,6 +356,7 @@ function buildMaterials(p: Palette): void {
     if (det && !lambert) {
       const m = new MeshPhysicalMaterial({ color: c, roughness: 0.34, metalness: 0.05, clearcoat: 0.8, clearcoatRoughness: 0.18, roughnessMap: texs.grain });
       m.envMapIntensity = 0.22;
+      if (env) m.envMap = envTex;
       return m;
     }
     return std({ color: c, roughness: 0.3, metalness: 0.05 }, 0.3);
@@ -487,6 +487,7 @@ export function buildBoard(state: RState): void {
 
   for (const piece of state.pieces) placePiece(piece, true);
   buildEnv();
+  fitShadow();
   if (!cursorRing) {
     cursorRing = new Mesh(geos.marker, new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: DoubleSide, depthWrite: false }));
     cursorRing.rotation.x = -PI / 2;
@@ -695,6 +696,9 @@ export function frameBoard(frame: Frame, aspect: number): void {
   if (key === fitKey) return;
   fitKey = key;
   fit = frame;
+  // minor 20+: the camera renders and projects with its own aspect (three parity)
+  camera.aspect = aspect;
+  camera.updateProjectionMatrix();
   const hw = boardDims.w / 2, hh = boardDims.h / 2;
   const pts: Vector3[] = [];
   for (const x of [-hw, hw]) for (const z of [-hh, hh]) for (const y of [0, PLATE_TOP + 0.3]) pts.push(new Vector3(x, y, z));
@@ -726,38 +730,42 @@ export function frameBoard(frame: Frame, aspect: number): void {
     oy -= ey * tanHalf * d;
   }
   camera.far = Math.max(100, d * 4);
+  camera.updateProjectionMatrix();
   camBase.copy(camera.position);
   camTarget.copy(target);
 }
 export function currentFit(): Frame { return fit; }
 
 // ---------- graphics ----------
-/** A studio (three.js RoomEnvironment's role): a dim room with bright soft
- * boxes above and to the sides, as linear light, prefiltered once. */
+/** Shadow box fitted tightly around the plate and the decor beside it (render3d.js fitShadow). */
+function fitShadow(): void {
+  const cam = shadowCam;
+  keyLight.target.position.set(0, 0, 0);
+  keyLight.target.updateMatrixWorld();
+  keyLight.updateMatrixWorld();
+  const view = new Matrix4().lookAt(keyLight.position, keyLight.target.position, new Vector3(0, 1, 0));
+  view.setPosition(keyLight.position).invert();
+  const hx = boardDims.w / 2 + 3.2, hz = boardDims.h / 2 + 2.2;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  const v = new Vector3();
+  for (const x of [-hx, hx]) for (const y of [0, 2.2]) for (const z of [-hz, hz]) {
+    v.set(x, y, z).applyMatrix4(view);
+    minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
+    minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+    minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
+  }
+  cam.left = minX; cam.right = maxX; cam.top = maxY; cam.bottom = minY;
+  cam.near = Math.max(0.1, -maxZ - 1); cam.far = -minZ + 1;
+  cam.updateProjectionMatrix();
+  keyLight.shadow.bias = -0.0006;
+  keyLight.shadow.normalBias = 0.02;
+}
+
+/** The page's reflections: RoomEnvironment(renderer) prefiltered once (sigma 0.04). */
 function buildEnvironment(): void {
   if (envTex) return;
-  const w = 128, h = 64;
-  const px = new Float32Array(w * h * 4);
-  const boxes: [number, number, number, number, number][] = [
-    [0, 1.25, 0.9, 0.18, 9], [PI, 1.25, 0.9, 0.18, 7], [PI / 2, 0.35, 0.35, 0.3, 6],
-    [-PI / 2, 0.35, 0.35, 0.3, 5], [PI * 0.25, 0.7, 0.25, 0.15, 4], [-PI * 0.75, 0.7, 0.25, 0.15, 4],
-  ];
-  for (let row = 0; row < h; row++) {
-    const lat = (0.5 - (row + 0.5) / h) * PI;
-    for (let c = 0; c < w; c++) {
-      const lon = ((c + 0.5) / w - 0.5) * 2 * PI;
-      let v = lat > 0 ? 0.32 + 0.12 * Math.sin(lat) : 0.18 + 0.06 * Math.cos(lat);
-      for (const [bl, bt, hw, hh, k] of boxes) {
-        let dl = Math.abs(lon - bl);
-        if (dl > PI) dl = 2 * PI - dl;
-        if (dl < hw && Math.abs(lat - bt) < hh) v = k;
-      }
-      const o = (row * w + c) * 4;
-      px[o] = v; px[o + 1] = v * 0.98; px[o + 2] = v * 0.95; px[o + 3] = 1;
-    }
-  }
   try {
-    envTex = new PMREMGenerator().fromEquirectangular(new DataTexture(px, w, h, RGBAFormat, FloatType)).texture;
+    envTex = new PMREMGenerator(renderer).fromScene(new RoomEnvironment(renderer), 0.04).texture;
   } catch (e) {
     console.warn("environment:", e instanceof Error ? e.message : String(e));
   }
@@ -787,16 +795,16 @@ export function applyLook(next: Look): void {
   }
   const shadows = next.shadowMap > 0;
   renderer.shadowMap.enabled = shadows;
+  renderer.shadowMap.type = PCFSoftShadowMap;
   keyLight.castShadow = shadows;
   if (shadows) keyLight.shadow.mapSize = next.shadowMap;
   if (next.reflections === "on") {
     buildEnvironment();
     scene.environment = envTex;
-    scene.environmentIntensity = 0.3;
-    fillLight.intensity = 0.2 / PI; // image-based light supplies most of the fill
+    fillLight.intensity = 0.2; // image-based light supplies most of the fill
   } else {
     scene.environment = null;
-    fillLight.intensity = 0.55 / PI;
+    fillLight.intensity = 0.55;
   }
   const aoHigh = next.ao === "high";
   renderer.ao = next.ao === "off" ? null : {
