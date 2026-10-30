@@ -9,9 +9,9 @@
 | Genre | Single-player direction/removal puzzle (perfect information, deterministic) |
 | Players | 1; a global high-score board when signed in (§12) |
 | Session | 30 s (Learn lesson) to ~4 min (7×7 Journey stage); Score Chase runs until the plate locks |
-| Platforms | StarHermit engine script game (engine 1.29.0, host API 1.31): natively in the StarHermit client, in desktop and mobile browsers on the engine's web runtime |
+| Platforms | StarHermit engine script game (engine 1.30.0, host API 1.32): natively in the StarHermit client, in desktop and mobile browsers on the engine's web runtime |
 | Rendering | `starhermit:scene` (three.js-style retained 3D scene) for the plate; every menu, HUD line and card is `starhermit:ui` (immediate mode) styled from the browser build's converted CSS |
-| Version | `starhermit.txt`: `version=1.0.0`, `contentVersion=1`, `engine.version=1.29.0`, `engine.minor=31` |
+| Version | `starhermit.txt`: `version=1.0.0`, `contentVersion=1`, `engine.version=1.30.0`, `engine.minor=32` |
 
 File map (everything that ships or tests the game):
 
@@ -245,7 +245,7 @@ Nine locales ship for all player-facing text: **en-US, en-GB, es-419, es-ES, de-
 
 ## 12. StarHermit integration
 
-- **Manifest** `starhermit.txt`: `name`, `description`, `owner`, `server=score-script.js`, `version=1.0.0`, `contentVersion=1`, `cover=cover.jpg`, `launch=index.html`, `engine.api=1`, `engine.entry=src/main.ts`, `engine.version=1.29.0`, `engine.minor=31`, `engine.capabilities=platform,storage,clipboard`, eight `control.*` actions with their `engine.gamepad.*` defaults.
+- **Manifest** `starhermit.txt`: `name`, `description`, `owner`, `server=score-script.js`, `version=1.0.0`, `contentVersion=1`, `cover=cover.jpg`, `launch=index.html`, `engine.api=1`, `engine.entry=src/main.ts`, `engine.version=1.30.0`, `engine.minor=32`, `engine.capabilities=platform,storage,clipboard`, eight `control.*` actions with their `engine.gamepad.*` defaults.
 - **Platform script** `score-script.js`: a practice session that accepts `{type:'result', scores}`, range-checks each score against its board and posts it.
 - **Leaderboard**: one board, `high-score` (integer, higher is better, 0–10,000,000). When signed in, every finished Journey, Daily, Challenge or Score Chase round (won, locked, timed out or resigned) post the total (`online.submitScore`: `sessions.practice()`, `connectGame`, `{type:'result'}`, the script's `result-ack`), and the results card shows "Leaderboard rank: #N" (or "Score posted / not posted to the leaderboard."). Practice rounds and lessons post nothing; a guest makes no request.
 - **Identity**: `player()`; the title's account line reads "Playing as <nickname> · progress synced / saving… / cloud sync unavailable", or "Offline — progress is stored on this device." for a guest. Signing in is the runtime's: **Sign in with StarHermit** calls `requestSignIn()` (its Account dialog); in the StarHermit client the player is signed in from the start. When the session ends (`onSessionEnded`) the line and a toast read "Signed out of StarHermit — progress stays on this device." and play goes on.
