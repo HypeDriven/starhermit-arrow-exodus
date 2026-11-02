@@ -233,8 +233,8 @@ class Particles {
   /** Attributes are copied when set: hand the arrays over again. */
   upload(pos: boolean, col: boolean): void {
     const g = this.points.geometry;
-    if (pos) { const a = g.getAttribute("position")!; a.array = this.pos; a.needsUpdate = true; }
-    if (col) { const a = g.getAttribute("color")!; a.array = this.col; a.needsUpdate = true; }
+    if (pos) { const a = (g.getAttribute("position") as BufferAttribute); a.array = this.pos; a.needsUpdate = true; }
+    if (col) { const a = (g.getAttribute("color") as BufferAttribute); a.array = this.col; a.needsUpdate = true; }
   }
 }
 
@@ -851,7 +851,7 @@ export function update(dtRaw: number): void {
       motePos[i * 3 + 1] = PLATE_TOP + 0.3 + rise * 2.4;
       motePos[i * 3 + 2] = (b - 0.5) * H + Math.cos(clockT * 0.25 + a * 20) * 0.35;
     }
-    const attr = motes!.geometry.getAttribute("position")!;
+    const attr = (motes!.geometry.getAttribute("position") as BufferAttribute);
     attr.array = motePos;
     attr.needsUpdate = true;
   }
