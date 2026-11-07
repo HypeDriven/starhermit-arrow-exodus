@@ -6,7 +6,7 @@
 // state; decorative randomness comes from the decor seed stream.
 //
 // What changed from three.js, and why:
-// - Shape / ExtrudeGeometry (not in the engine) are geometry.ts.
+// - The arrows and tile slabs are the engine's Shape / ExtrudeGeometry (geometry.ts).
 // - Layers do not exist: picking raycasts the piece group only, as before.
 // - The EffectComposer chain (GTAO, UnrealBloom, the grade ShaderPass, SMAA /
 //   FXAA / canvas MSAA) is renderer.ao / bloom / grade / antialias; the
@@ -21,9 +21,9 @@
 //   (brushed steel as stored, the workbench sRGB; minor 28 follows colorSpace).
 // - Render scale, pixel-ratio cap and adaptive resolution are the runtime's
 //   graphics level.
-// - The camera aspect is the window's (no setViewOffset): frameBoard moves
-//   the camera and pulls it back until the plate fits the part of the window
-//   the HUD leaves free, as the square canvas host did.
+// - The camera aspect is the window's: frameBoard sets the camera's distance
+//   and a view offset so the plate fits the part of the window the HUD leaves
+//   free, as the square canvas host did.
 import {
   ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry,
   DataTexture, DirectionalLight, DoubleSide, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh,
@@ -41,9 +41,12 @@ export interface REvent { type: string; piece?: string; d?: number; big?: boolea
 export interface Palette { plate: number; plateEdge: number; cell: number; floor: number; enamel: number; enamel2: number; bolt: number; light: number; accent: number; fog: number }
 export interface Theme { id: string; palette: Palette }
 export interface Look {
-  preset: string; shadows: string; shadowMap: number; ao: string; bloom: string; grade: string; antialias: "off" | "fxaa" | "smaa" | "msaa";
+  preset: string;
+  // The engine's, from levelSettings(): 0 = no shadows, null = off.
+  shadows: number; ao: { resolution: number; samples: number; denoiseSamples: number } | null; bloom: number | null; grade: boolean; antialias: "off" | "fxaa" | "smaa" | "msaa";
+  // The game's art, by quality tier (js/gfx.js).
   reflections: string; detail: string; particles: string; background: string;
-  budget: { geometry: string; material: string; texture: number; sparks: number[]; pool: number; motes: number; bloomRes: number };
+  budget: { geometry: string; material: string; texture: number; sparks: number[]; pool: number; motes: number };
 }
 interface Rng { next(): number }
 interface RngApi { derive(seed: number, stream: number): Rng; STREAM_DECOR: number }
@@ -244,7 +247,6 @@ const VIEW = new Vector3(0, 0.82, 0.62).normalize(); // the camera's direction f
 const camBase = new Vector3(0, 7.5, 8.5);
 const camTarget = new Vector3(0, 0.4, 0);
 let camShake = 0;
-let fit: Frame = { x0: -1, y0: -1, x1: 1, y1: 1 };
 let fitKey = "";
 
 const envGroup = new Group();
@@ -368,12 +370,12 @@ function buildMaterials(p: Palette): void {
   // chevrons stay dark against the enamel so direction always reads first
   mats.chevron = std({ color: env ? 0x0d0f12 : p.plateEdge, roughness: env ? 0.4 : 0.5, metalness: env ? 0.6 : 0.7 }, 0.25);
   const glow = new MeshBasicMaterial({ color: p.accent, transparent: true, opacity: 0.9 });
-  if (q.bloom === "on") { // HDR so only the free markers and sparks cross the bloom threshold
+  if (q.bloom !== null) { // HDR so only the free markers and sparks cross the bloom threshold
     glow.color.multiplyScalar(5);
     glow.toneMapped = false;
   }
   mats.freeGlow = glow;
-  particles!.setMode(q.particles === "high", q.bloom === "on" ? 4 : 1);
+  particles!.setMode(q.particles === "high", q.bloom !== null ? 4 : 1);
 }
 
 // ---------- environment (deterministic decor from the decor stream) ----------
@@ -688,53 +690,42 @@ export function pickPiece(x: number, y: number): string | null {
 }
 
 // ---------- the camera ----------
-/** Fits the plate (rim and tiles) into `frame` (NDC, y up): pulls the camera
- * back until every corner is inside, and slides it across its view until the
- * plate is centred there. */
+/** Fits the plate (rim and tiles) into `frame` (NDC, y up): the camera's
+ * distance fills it (about 1/d, so a few steps settle it), and a view offset
+ * centres the plate there. */
 export function frameBoard(frame: Frame, aspect: number): void {
   const key = [frame.x0, frame.y0, frame.x1, frame.y1, aspect, boardDims.w, boardDims.h].map((n) => n.toFixed(4)).join(",");
   if (key === fitKey) return;
   fitKey = key;
-  fit = frame;
-  // minor 20+: the camera renders and projects with its own aspect (three parity)
-  camera.aspect = aspect;
-  camera.updateProjectionMatrix();
-  const hw = boardDims.w / 2, hh = boardDims.h / 2;
-  const pts: Vector3[] = [];
-  for (const x of [-hw, hw]) for (const z of [-hh, hh]) for (const y of [0, PLATE_TOP + 0.3]) pts.push(new Vector3(x, y, z));
+  const target = new Vector3(0, 0.3, 0.3);
   const right = new Vector3(1, 0, 0);
   const up = new Vector3(0, VIEW.z, -VIEW.y); // the view's up, perpendicular to its axis
-  const rw = (frame.x1 - frame.x0) / 2, rh = (frame.y1 - frame.y0) / 2;
-  const cx = (frame.x0 + frame.x1) / 2, cy = (frame.y0 + frame.y1) / 2;
-  const tanHalf = Math.tan((camera.fov * PI / 180) / 2);
-  let d = 6;
-  let ox = 0, oy = 0;
-  const _v = new Vector3();
-  const target = new Vector3();
-  for (let i = 0; i < 60; i++) {
-    target.set(0, 0.3, 0.3).addScaledVector(right, ox).addScaledVector(up, oy);
-    camera.position.copy(target).addScaledVector(VIEW, d);
-    camera.lookAt(target);
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const p of pts) {
-      _v.copy(p).project(camera);
-      minX = Math.min(minX, _v.x); maxX = Math.max(maxX, _v.x); minY = Math.min(minY, _v.y); maxY = Math.max(maxY, _v.y);
-    }
-    const over = Math.max((maxX - minX) / 2 / (rw * 0.94), (maxY - minY) / 2 / (rh * 0.94));
-    const ex = cx - (minX + maxX) / 2, ey = cy - (minY + maxY) / 2;
-    if (over > 1.001) { d *= Math.min(1.6, over + 0.02); continue; }
-    if (over < 0.97 && i < 30) { d *= Math.max(0.7, over + 0.01); continue; }
-    if (Math.abs(ex) < 0.002 && Math.abs(ey) < 0.002) break;
-    // Sliding camera and target by Δ moves the image by -Δ / half the view's extent there.
-    ox -= ex * tanHalf * d * aspect;
-    oy -= ey * tanHalf * d;
+  const hw = boardDims.w / 2, hh = boardDims.h / 2;
+  const pts: [number, number, number][] = []; // corners in view space about the target
+  for (const x of [-hw, hw]) for (const z of [-hh, hh]) for (const y of [0, PLATE_TOP + 0.3]) {
+    const p = new Vector3(x, y, z).sub(target);
+    pts.push([p.dot(right), p.dot(up), p.dot(VIEW)]);
   }
+  const rw = (frame.x1 - frame.x0) / 2, rh = (frame.y1 - frame.y0) / 2;
+  const tanHalf = Math.tan((camera.fov * PI / 180) / 2);
+  let d = 6 + Math.max(hw, hh);
+  let midX = 0, midY = 0;
+  for (let i = 0; i < 8; i++) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const [x, y, z] of pts) {
+      const px = x / (tanHalf * aspect * (d - z)), py = y / (tanHalf * (d - z));
+      minX = Math.min(minX, px); maxX = Math.max(maxX, px); minY = Math.min(minY, py); maxY = Math.max(maxY, py);
+    }
+    midX = (minX + maxX) / 2; midY = (minY + maxY) / 2;
+    d *= Math.max((maxX - minX) / 2 / (rw * 0.94), (maxY - minY) / 2 / (rh * 0.94));
+  }
+  const W = aspect * 1000, H = 1000;
+  camera.setViewOffset(W, H, (midX - (frame.x0 + frame.x1) / 2) / 2 * W, ((frame.y0 + frame.y1) / 2 - midY) / 2 * H, W, H);
   camera.far = Math.max(100, d * 4);
   camera.updateProjectionMatrix();
-  camBase.copy(camera.position);
+  camBase.copy(target).addScaledVector(VIEW, d);
   camTarget.copy(target);
 }
-export function currentFit(): Frame { return fit; }
 
 // ---------- graphics ----------
 /** Shadow box fitted tightly around the plate and the decor beside it (render3d.js fitShadow). */
@@ -771,7 +762,7 @@ function buildEnvironment(): void {
   }
 }
 
-/** Applies the look for the frame's graphics level (js/gfx.js resolve); cheap when unchanged. */
+/** Applies the look for the frame's graphics level (look.ts); cheap when unchanged. */
 export function applyLook(next: Look): void {
   if (q && JSON.stringify(q) === JSON.stringify(next)) return;
   build();
@@ -793,11 +784,11 @@ export function applyLook(next: Look): void {
     if (cursorRing) cursorRing.geometry = geos.marker;
     if (old) for (const g of Object.values(old)) g.dispose();
   }
-  const shadows = next.shadowMap > 0;
+  const shadows = next.shadows > 0;
   renderer.shadowMap.enabled = shadows;
   renderer.shadowMap.type = PCFSoftShadowMap;
   keyLight.castShadow = shadows;
-  if (shadows) keyLight.shadow.mapSize = next.shadowMap;
+  if (shadows) keyLight.shadow.mapSize = next.shadows; // the game sets it, the engine doesn't hold it to the level (minor 23+)
   if (next.reflections === "on") {
     buildEnvironment();
     scene.environment = envTex;
@@ -806,17 +797,17 @@ export function applyLook(next: Look): void {
     scene.environment = null;
     fillLight.intensity = 0.55;
   }
-  const aoHigh = next.ao === "high";
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: 0.7, radius: 0.35, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: aoHigh ? 16 : 8,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: aoHigh ? 6 : 4, rings: 2, samples: aoHigh ? 16 : 8, radiusExponent: 2 },
+  const ao = next.ao, aoFull = !!ao && ao.resolution >= 1; // the engine's AO "high": full resolution
+  renderer.ao = !ao ? null : {
+    blendIntensity: 0.7, radius: 0.35, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: aoFull ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // high threshold: only the HDR free markers, sparks and specular glints bloom
   // the page's r160 UnrealBloomPass exactly (model "r160", strength 0.45 as written)
-  renderer.bloom = next.bloom === "on" ? { model: "r160", strength: 0.45, radius: 0.35, threshold: 1.6, resolution: b.bloomRes } : null;
+  renderer.bloom = next.bloom !== null ? { model: "r160", strength: 0.45, radius: 0.35, threshold: 1.6, resolution: next.bloom } : null;
   // render3d.js GradeShader after OutputPass: a gentle S-curve (contrastCurve "s", 0.22 of c²(3−2c)),
   // a touch more saturation, cool shadows / warm highlights, a soft vignette.
-  renderer.grade = next.grade === "on" ? {
+  renderer.grade = next.grade ? {
     space: "display", contrastCurve: "s", contrast: 0.22, saturation: 1.1,
     shadows: [0.95, 0.98, 1.05], highlights: [1.04, 1.0, 0.95], split: [0.15, 0.75],
     vignette: { amount: 0.26, inner: 0.3, outer: 0.8, scale: [1, 0.9] },

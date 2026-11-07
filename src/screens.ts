@@ -5,7 +5,7 @@
 // HUD around the 3D plate (title and lesson text above it; caption, status
 // line and actions below it, or beside it on a short landscape screen), and
 // the pause, results, lesson and settings cards as modal dialogs over the
-// plate, plus the toast. The browser's media queries are layouts picked by
+// plate. The browser's media queries are layouts picked by
 // the window's logical size: phone width (≤ 640 px, the title's ≤ 760 px)
 // and short landscape (≤ 500 px tall).
 import { frame, openMenu } from "starhermit:engine";
@@ -24,11 +24,9 @@ import { look } from "./look.js";
 // -- helpers ------------------------------------------------------------------------------
 interface View { w: number; h: number; s: number; narrow: boolean; short: boolean; phoneTitle: boolean }
 function view(): View {
-  const { width, height, safeArea } = frame();
-  const s = ui.preferences().scale;
-  const w = Math.max(1, (width - safeArea.left - safeArea.right) / s);
-  const h = Math.max(1, (height - safeArea.top - safeArea.bottom) / s);
-  return { w, h, s, narrow: w <= 640, short: h <= 500 && w > h, phoneTitle: w <= 760 };
+  const v = ui.viewport!();
+  const w = Math.max(1, v.width), h = Math.max(1, v.height);
+  return { w, h, s: v.scale, narrow: w <= 640, short: h <= 500 && w > h, phoneTitle: w <= 760 };
 }
 const clamp = (v: number, a: number, b: number): number => Math.max(a, Math.min(b, v));
 type Cls = string | ui.Style | false | null | undefined;
@@ -53,21 +51,9 @@ function button(id: string, text: string, styles: Cls[], width?: number): boolea
 interface Btn { id: string; text: string; primary?: boolean; act: () => void }
 /** Buttons in rows that wrap at `width` (the browser's flex-wrap .row). */
 function buttonRows(label: string, list: Btn[], width: number, spacing: number, justify: ui.Align): ui.Rect {
-  const s = ui.preferences().scale;
-  const styles = (b: Btn): string[] => ["btn", ...(b.primary ? ["btn.primary"] : [])];
-  const rows: Btn[][] = [[]];
-  let used = 0;
-  for (const b of list) {
-    const bw = Math.min(width, ui.measureText(b.text, { kind: "button", style: styles(b) }).width / s + 1);
-    if (rows.at(-1)!.length && used + spacing + bw > width) { rows.push([]); used = 0; }
-    used += (rows.at(-1)!.length ? spacing : 0) + bw;
-    rows.at(-1)!.push(b);
-  }
-  return ui.column(label, () => {
-    rows.forEach((row, ri) => ui.row(`${label}-r${ri}`, () => {
-      for (const b of row) if (button(b.id, b.text, styles(b), width)) act(b.act);
-    }, { spacing, justify, align: "center", ...(justify !== "start" ? { width } : {}) }));
-  }, { spacing, align: justify === "center" ? "center" : "start" });
+  return ui.row(label, () => {
+    for (const b of list) if (button(b.id, b.text, ["btn", ...(b.primary ? ["btn.primary"] : [])], width)) act(b.act);
+  }, { wrap: true, width, gap: spacing, justify, align: "center" });
 }
 
 /** A key's label for the HUD hints, as the browser build printed it ("H", "Esc"). */
@@ -147,8 +133,8 @@ function titleScreen(v: View): void {
             { id: "btn-profile", text: t("profile"), act: () => game.showScreen("profile-info") },
             { id: "btn-settings", text: t("settings"), act: () => { app.settings = true; } },
           ];
-          if (signedIn()) list.push({ id: "btn-invite", text: t("p.invite"), act: invite });
-          else list.push({ id: "btn-sign-in", text: t("p.signIn"), act: signIn });
+          if (signedIn()) list.push({ id: "btn-invite", text: t("starhermit.invite"), act: invite });
+          else list.push({ id: "btn-sign-in", text: t("starhermit.signIn"), act: signIn });
           const blur = q.preset === "high" || q.preset === "ultra";
           ui.grid("menu-secondary", () => {
             list.forEach((b, i) => {
@@ -166,13 +152,13 @@ function titleScreen(v: View): void {
 }
 
 function accountLine(): string {
-  if (!signedIn()) return signedOutNotice ? t("p.signedOut") : t("p.offline");
+  if (!signedIn()) return signedOutNotice ? t("starhermit.signedOut") : t("p.offline");
   const st = syncStatus();
   const sync = st === "synced" ? t("p.synced") : st === "saving" ? t("p.saving") : t("p.syncOff");
   return t("p.playingAs", { name: displayName() || "…" }) + " · " + sync;
 }
 let signedOutNotice = false;
-export function noteSignedOut(): void { signedOutNotice = true; game.toast(t("p.signedOut")); }
+export function noteSignedOut(): void { signedOutNotice = true; game.toast(t("starhermit.signedOut")); }
 let signingIn = false;
 function signIn(): void {
   if (signingIn) return;
@@ -181,7 +167,7 @@ function signIn(): void {
 }
 function invite(): void {
   const r = copyInvite();
-  game.toast(r.ok ? t("p.inviteCopied") : (t("p.inviteFailed") + (r.link ? " " + r.link : "")));
+  game.toast(r.ok ? t("starhermit.inviteCopied") : r.link ? t("starhermit.inviteLink", { link: r.link }) : t("starhermit.inviteFailed"));
 }
 
 // -- the menu screens ---------------------------------------------------------------------
@@ -455,10 +441,6 @@ export function buildUi(): void {
       else if (app.overlay === "lesson") lessonCard(v);
     }
     if (!app.settings && app.overlay === null) openedAt.clear();
-    if (app.toast) {
-      const text = app.toast.text;
-      ui.place("toast", { anchor: "bottom", y: 20 }, () => { ui.style("toast").paragraph(text, Math.min(v.w - 32, 560) - 34); });
-    }
   });
   // Back (Escape / East) on the menu screens: the screen's back button.
   if (!app.settings && app.screen !== "play" && app.screen !== "title" && ui.back()) {

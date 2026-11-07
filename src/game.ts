@@ -7,6 +7,7 @@
 // the shared classic scripts (js/rules.js, js/content.js, js/rng.js), so a
 // round plays exactly as before. screens.ts draws this state each frame.
 import { frame } from "starhermit:engine";
+import * as ui from "starhermit:ui";
 import { announce } from "starhermit:ui";
 import { loadClassic } from "starhermit:script";
 import * as audio from "./audio.js";
@@ -63,13 +64,14 @@ export const app = {
   overlay: null as Overlay,
   /** Settings dialog open (over the title or the pause card). */
   settings: false,
-  toast: null as { text: string; until: number } | null,
   caption: null as { key: string; until: number } | null,
 };
 export function showScreen(s: Screen): void { app.screen = s; app.overlay = null; render.setVisible(s === "play"); }
+let shownToast: ui.Toast | null = null;
+/** One page toast at a time, 20 px above the safe area's bottom as the browser build's (a press still reaches the plate). */
 export function toast(text: string): void {
-  app.toast = { text, until: now() + 2600 };
-  announce(text);
+  shownToast?.dismiss();
+  shownToast = ui.toast!(text, { duration: 2.6, style: "toast", dismissible: false, offset: 4 });
 }
 audio.setCaptions((key) => {
   if (!gameSettings().captions) return;
@@ -331,7 +333,6 @@ export function tick(): void {
     app.settings = false;
   }
   const ms = now();
-  if (app.toast && ms > app.toast.until) app.toast = null;
   if (app.caption && ms > app.caption.until) app.caption = null;
 }
 
@@ -430,7 +431,7 @@ export function scoreBreakdown(state: State): [string, string][] {
 export function leaderboardLine(): string | null {
   if (!round || (!round.lbPending && !round.lb)) return null;
   const r = round.lb;
-  return !r ? t("p.lbPosting") : !r.posted ? t("p.lbNotPosted") : r.rank ? t("p.lbRank", { rank: r.rank }) : t("p.lbPosted");
+  return !r ? t("starhermit.leaderboardPosting") : !r.posted ? t("starhermit.leaderboardNotPosted") : r.rank ? t("starhermit.leaderboardRank", { rank: r.rank }) : t("starhermit.leaderboardPosted");
 }
 
 /** The HUD status line. */
@@ -446,3 +447,4 @@ export function hudStatus(): string {
   if (s.cfg.endless) txt += " · " + t("hud.plate", { n: s.endlessWave });
   return txt;
 }
+

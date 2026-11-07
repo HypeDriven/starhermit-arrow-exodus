@@ -4,9 +4,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { loadClassic } from './load.mjs';
 
-const { LOCALES, STRINGS } = loadClassic('strings.js').AXStrings;
+const STRINGS = JSON.parse(readFileSync(new URL('../assets/strings.json', import.meta.url), 'utf8'));
+const LOCALES = Object.keys(STRINGS);
 const EN = STRINGS['en-US'];
 const vars = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
@@ -33,5 +33,5 @@ test('every literal key the client uses exists', () => {
     for (const m of src.matchAll(/"(cap\.\w+)"/g)) used.add(m[1]);
   }
   assert.ok(used.size > 40);
-  for (const k of used) assert.ok(k in EN, `missing key ${k}`);
+  for (const k of used) if (!k.startsWith('starhermit.')) assert.ok(k in EN, `missing key ${k}`);
 });

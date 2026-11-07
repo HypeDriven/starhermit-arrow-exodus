@@ -22,16 +22,16 @@ File map (everything that ships or tests the game):
 | `src/main.ts` | Entry (`engine.entry`): lifecycle, the manifest's actions, pointer/touch picking, the frame |
 | `src/game.ts` | Controller: screens state, rounds (history, clock, time limit, lessons), results recording, achievements, leaderboard post, HUD status text |
 | `src/render.ts` | The plate on `starhermit:scene`: lights, procedural textures and meshes, tiles, bolts, decor, tweens, sparks, dust motes, free markers, hint/cursor rings, picking, camera fitting, post effects per graphics level |
-| `src/geometry.ts` | three.js `Shape` + `ExtrudeGeometry` stand-in: rounded bevelled slabs and the arrow chevrons |
-| `src/screens.ts` | All UI: title, modes, info panels, play HUD, pause / results / lesson / settings cards, toast |
+| `src/geometry.ts` | Rounded bevelled slabs and the arrow chevrons on the engine's `Shape` + `ExtrudeGeometry` |
+| `src/screens.ts` | All UI: title, modes, info panels, play HUD, pause / results / lesson / settings cards |
 | `src/style.ts` | Registers `assets/ui-style.json` (from `tools/ui-style.css`) plus the theme, dialog, select, checkbox and results-art styles |
 | `src/audio.ts` | Event → clip map on the engine mixer, captions, the room tone and generative pad rendered into clips |
 | `src/save.ts` | Progress as the engine save (`saves`) with conflict merge and the browser build's cloud save migration; the game settings (theme, captions) |
 | `src/online.ts` | Score posting through `score-script.js`, the invite link |
-| `src/i18n.ts`, `src/look.ts` | The interface language → string table; the graphics level → look |
+| `src/i18n.ts`, `src/look.ts` | The interface language → engine strings; the graphics level → `levelSettings()` + the art row |
 | `js/rng.js`, `js/rules.js`, `js/content.js`, `js/store.js` | The browser build's pure classic scripts, loaded with `loadClassic` (rules, content, seeds, save document) |
-| `js/gfx.js` | Pure graphics model: quality tier → preset row and budgets, level scaling |
-| `js/strings.js` | Every player-facing string in the nine locales |
+| `js/gfx.js` | The game's art by quality tier: preset row and budgets, spark scaling |
+| `assets/strings.json` | Every game string in the nine locales (`strings.load`); account and leaderboard lines are the engine's `starhermit.*` |
 | `score-script.js` | StarHermit platform script (`server=score-script.js`): range-checks a finished round's total and posts it to the `high-score` leaderboard |
 | `sfx/*.opus`, `sfx/manifest.*` | 14 authored clips and the event binding table (§9) |
 | `assets/` | Key art, results illustrations, `ui-style.json` |
@@ -167,7 +167,7 @@ title ──Play/Daily──────────────► play ◄─�
 - **Play**: the plate fills the window; the mode + stage title and the intro / lesson text wrap above it; the caption line, the status line (Score · arrows left · mistakes · time · limit · plate) and the action buttons (wrapping rows) sit below it. On a short landscape screen the title column is at the left and the caption, status and a column of actions at the right, the plate between them at nearly the full height. The camera is fitted (`render.frameBoard`) so the whole plate sits in the free part of the window, at most 760 logical px.
 - **Results**: headline ("Plate cleared!", "No clear paths left", "Time's up", "Round resigned") as the card's title, illustration (cleared / locked), breakdown rows (Exits, Best combo, Flawless bonus, Time bonus, Plates cleared, Mistakes, Time, Total), the leaderboard line when signed in, buttons; Replay has focus. A lesson's goal shows the lesson card (Lesson complete, the lesson title, Next lesson) 0.7 s after it is reached.
 - **Settings** (from the title or the pause card): Visual theme (themes above the player's stars are listed disabled with "unlock at n stars"), Captions for sound cues, **Sound, graphics and more…** (opens the runtime's Options: volumes and mute, graphics level and frame-rate limit, language, controls, accessibility), Close.
-- **Toast** at the bottom for invite, sign-out and similar notices, also announced to screen readers.
+- **Toast** (`ui.toast`) at the bottom for invite and sign-out notices, also announced to screen readers.
 
 ## 8. Art direction
 
@@ -191,14 +191,14 @@ title ──Play/Daily──────────────► play ◄─�
 
 **Motion.** Tween manager with authored easings. Launch: 0.5 s ease-in slide off the plate with a small arc and spin, sparks at the edge, camera shake 0.04 (0.08 big). Blocked: 0.3 s perpendicular shake. Drop-in: 0.35 s ease-out fall for new waves. Win: gold burst (`#ffd070`), shake 0.12. Free markers pulse ±12 %. Hint ring `#7fb0ff`. **Reduced motion** (the runtime's preference): pieces vanish instantly, no drop-in, no shake, no pulse, no dust motes, lamp shimmer or title drift; event timing is unchanged.
 
-**Graphics.** The runtime's Options › Graphics chooses the graphics level (Auto from the GPU, or one of ten); its quality tier picks one of the browser build's presets (`js/gfx.js`), and the level's speed within the tier scales the sparks (× 1.64 per level above the tier's first, at most 4×, never past the pool). The runtime owns render scale, pixel-ratio cap, adaptive resolution, the frame-rate limit and the shadow-map and MSAA caps. Per preset: image-based light from `RoomEnvironment(renderer)` prefiltered once (each standard material takes it as its own envMap at the page's envMapIntensity) (`reflections`; the hemisphere fill drops from 0.55 to 0.2); surface detail (procedural brushed-steel colour/roughness maps on the plate, rim and bolts, fine grain on cells, clearcoat enamel, a lamp-pool workbench texture); key-light shadows at 1024/2048/4096²; `renderer.ao` (GTAO, 8/16 samples), `renderer.bloom` (strength 0.45, threshold 1.6, so only the HDR free-marker dots (×5) and sparks (×4) bloom), `renderer.grade` (display-space S-curve contrast, saturation 1.1, cool shadows / warm highlights, vignette 0.26) and `renderer.antialias` (MSAA / FXAA / SMAA); sparks (high: additive glow; low: a third of them); ambient motion (dust motes and a ±3 % key-light shimmer).
+**Graphics.** The runtime's Options › Graphics chooses the graphics level (Auto from the GPU, or one of ten); the engine-owned effects (shadows and their size, AO, bloom, grade, anti-aliasing) are the level's own `levelSettings()`; its quality tier picks one of the browser build's art rows (`js/gfx.js`), and the level's particle budget over the tier's first level's scales the sparks (at most 4×, never past the pool). The runtime owns render scale, pixel-ratio cap, adaptive resolution and the frame-rate limit. The look: image-based light from `RoomEnvironment(renderer)` prefiltered once (each standard material takes it as its own envMap at the page's envMapIntensity) (`reflections`; the hemisphere fill drops from 0.55 to 0.2); surface detail (procedural brushed-steel colour/roughness maps on the plate, rim and bolts, fine grain on cells, clearcoat enamel, a lamp-pool workbench texture); key-light shadows; `renderer.ao` (GTAO), `renderer.bloom` (strength 0.45, threshold 1.6, so only the HDR free-marker dots (×5) and sparks (×4) bloom), `renderer.grade` (display-space S-curve contrast, saturation 1.1, cool shadows / warm highlights, vignette 0.26) and `renderer.antialias`; sparks (high: additive glow; low: a third of them); ambient motion (dust motes and a ±3 % key-light shimmer).
 
-| Tier (levels) | Shadows | AO | Bloom / grade | AA | Reflections / detail | Meshes | Materials | Textures | Sparks per launch / win | Pool | Motes |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Low (quantum, atomic) | off | off | off | MSAA | off / plain | lite | Lambert | none | 6 / 24 | 160 | 0 |
-| Balanced (molecular, cellular) | 1024² | off | on | FXAA | on / detailed | standard | Standard / Physical | 128 / 64 / 256 px | 10 / 45 | 240 | 30 |
-| High (terrestrial–stellar) | 2048² | on | on | SMAA | on / detailed | standard | Standard / Physical | 256 / 128 / 512 px | 18 / 90 | 400 | 70 (animated) |
-| Ultra (galactic–infinite) | 4096² | high | on | MSAA | on / detailed | rich | Standard / Physical | 512 / 256 / 1024 px | 28 / 140 | 800 | 140 (animated) |
+| Tier (levels) | Reflections / detail | Meshes | Materials | Textures | Sparks per launch / win | Pool | Motes |
+|---|---|---|---|---|---|---|---|
+| Low (quantum, atomic) | off / plain | lite | Lambert | none | 6 / 24 | 160 | 0 |
+| Balanced (molecular, cellular) | on / detailed | standard | Standard / Physical | 128 / 64 / 256 px | 10 / 45 | 240 | 30 |
+| High (terrestrial–stellar) | on / detailed | standard | Standard / Physical | 256 / 128 / 512 px | 18 / 90 | 400 | 70 (animated) |
+| Ultra (galactic–infinite) | on / detailed | rich | Standard / Physical | 512 / 256 / 1024 px | 28 / 140 | 800 | 140 (animated) |
 
 Changes apply live (`render.applyLook` each frame, rebuilding materials, meshes and the board only when the look changed). Gameplay, picking and what is on the plate are identical on every tier.
 
@@ -206,7 +206,7 @@ Changes apply live (`render.applyLook` each frame, rebuilding materials, meshes 
 
 ## 9. Audio direction
 
-**Mix.** The runtime's buses and Options › Audio (volumes, mute, voice limit, mute when unfocused): clips play on `effects` at 0.9 (the browser build's default effects level), the UI tap and cursor tick on `interface`, the bed on `music`. Ambience is a looped low-passed (260 Hz) brown-noise room tone at 0.16; music is a generative pad: a four-chord walk (A–C–E, F–A–C, G–B–D, D–A–D) at half pitch through a 640 Hz low-pass, one 6.6 s swell every 5.2 s, at 0.03. Both are rendered once into clips (`createClip`, 8 kHz, a clip a frame) and start when the mixer runs (natively at once; in a browser after the player's first press); the clips load at that moment too, as the browser build fetched its samples after the audio unlock. Captions (Settings) print each cue's text on the caption line for 1.8 s and announce it.
+**Mix.** The runtime's buses and Options › Audio (volumes, mute, voice limit, mute when unfocused): clips play on `effects` at 0.9 (the browser build's default effects level), the UI tap and cursor tick on `interface`, the bed on `music`. Ambience is a looped low-passed (260 Hz) brown-noise room tone at 0.16; music is a generative pad: a four-chord walk (A–C–E, F–A–C, G–B–D, D–A–D) at half pitch through a 640 Hz low-pass, one 6.6 s swell every 5.2 s, at 0.03. Both are rendered once offline (`OfflineAudioContext`, 8 kHz, seeded brown noise) at start and start playing when the mixer runs (natively at once; in a browser after the player's first press); the clips load at start too. Captions (Settings) print each cue's text on the caption line for 1.8 s and announce it.
 
 **SFX event table** (`sfx/manifest.*`; all clips MOSS-SFX v2.0, 48 kHz mono Opus):
 
@@ -229,7 +229,7 @@ Changes apply live (`render.applyLook` each frame, rebuilding materials, meshes 
 
 ## 10. Localization
 
-Nine locales ship for all player-facing text: **en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT** (`js/strings.js`: menus, mode descriptions, HUD, cards, settings, captions, account and leaderboard lines (`p.*`), and the content names and texts: 40 Journey stages, 6 Challenges, 3 Practice presets, Score Chase, Daily, 6 Learn lessons, 5 themes; `content.js` keeps the English data and the controller looks names up by id).
+Nine locales ship for all player-facing text: **en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT** (`assets/strings.json`: menus, mode descriptions, HUD, cards, settings, captions, the game's own account lines (`p.*`; sign-in, invite and leaderboard lines are the engine's `starhermit.*`), and the content names and texts: 40 Journey stages, 6 Challenges, 3 Practice presets, Score Chase, Daily, 6 Learn lessons, 5 themes; `content.js` keeps the English data and the controller looks names up by id).
 
 - **Language**: the runtime's interface language (`preferences().language`: the player's choice in Options › Language, else the account's or the device's), mapped to the nearest shipped locale (`es-MX → es-419`, `en-AU → en-GB`, `fr → fr-FR`, `pt-PT → pt-BR`). A change shows on the next frame; the round, its clock and the plate keep running, and an open results card does not post again.
 - Regional variants: es-ES "Pulsa/Intro" and "Hora punta", es-419 "Toca/Enter" and "Hora pico"; fr-CA "Pointage"; en-GB shares the en-US text.
@@ -247,7 +247,7 @@ Nine locales ship for all player-facing text: **en-US, en-GB, es-419, es-ES, de-
 
 - **Manifest** `starhermit.txt`: `name`, `description`, `owner`, `server=score-script.js`, `version=1.0.0`, `contentVersion=1`, `cover=cover.jpg`, `launch=index.html`, `engine.api=1`, `engine.entry=src/main.ts`, `engine.version=1.38.0`, `engine.minor=38`, `engine.capabilities=platform,storage,clipboard`, eight `control.*` actions with their `engine.gamepad.*` defaults.
 - **Platform script** `score-script.js`: a practice session that accepts `{type:'result', scores}`, range-checks each score against its board and posts it.
-- **Leaderboard**: one board, `high-score` (integer, higher is better, 0–10,000,000). When signed in, every finished Journey, Daily, Challenge or Score Chase round (won, locked, timed out or resigned) post the total (`online.submitScore`: `sessions.practice()`, `connectGame`, `{type:'result'}`, the script's `result-ack`), and the results card shows "Leaderboard rank: #N" (or "Score posted / not posted to the leaderboard."). Practice rounds and lessons post nothing; a guest makes no request.
+- **Leaderboard**: one board, `high-score` (integer, higher is better, 0–10,000,000). When signed in, every finished Journey, Daily, Challenge or Score Chase round (won, locked, timed out or resigned) post the total (`leaderboards.submitScore`), and the results card shows "Leaderboard rank: #N" (or "Score posted / not posted to the leaderboard."). Practice rounds and lessons post nothing; a guest makes no request.
 - **Identity**: `player()`; the title's account line reads "Playing as <nickname> · progress synced / saving… / cloud sync unavailable", or "Offline — progress is stored on this device." for a guest. Signing in is the runtime's: **Sign in with StarHermit** calls `requestSignIn()` (its Account dialog); in the StarHermit client the player is signed in from the start. When the session ends (`onSessionEnded`) the line and a toast read "Signed out of StarHermit — progress stays on this device." and play goes on.
 - **Save**: the progress document (`{ v, progress }`: Journey stars and bests, Challenge bests, dailies, Score Chase best, finished lessons, achievements, lifetime stats) is the engine save (`saves`): on the device at once, in the account's cloud slot when signed in. When the account holds another device's save, `onConflict` merges both (`AXStore.mergeDocs`: more stars, higher bests, union of lessons and achievements at the earliest unlock, the larger of each counter).
 - **Browser-build saves**: the cloud slot `game:<slug>` the JS SDK wrote (a ZIP with `save.json` holding `{ sum, payload }`) shows as foreign; it is parsed (`AXStore.loadRaw`), merged into the device's progress, its theme and captions taken over unless set since, and saved over the slot once (`replaceForeign`). The browser build's per-player settings keys (its whole settings object) are read as legacy settings: theme and captions are kept, the rest (volumes, mute, graphics, reduced motion, contrast, text size, unused assists) are the runtime's now, and all are removed from the account. A guest's old browser localStorage progress cannot be read by the engine.
@@ -259,7 +259,7 @@ Nine locales ship for all player-facing text: **en-US, en-GB, es-419, es-ES, de-
 
 ## 13. Technical architecture
 
-- **Modules**: `src/main.ts` (entry) imports `game.ts`, `render.ts`, `screens.ts`, `save.ts`, `online.ts`, `audio.ts`, `i18n.ts`, `look.ts`, `style.ts`; `screens.ts` reads `game.ts`, which never imports the screens (no module cycle). The browser build's pure scripts load as classic scripts (`loadClassic`: `rng.js`, `store.js`, `rules.js`, `content.js`, `gfx.js`, `strings.js`) and are the same files the Node tests run.
+- **Modules**: `src/main.ts` (entry) imports `game.ts`, `render.ts`, `screens.ts`, `save.ts`, `online.ts`, `audio.ts`, `i18n.ts`, `look.ts`, `style.ts`; `screens.ts` reads `game.ts`, which never imports the screens (no module cycle). The browser build's pure scripts load as classic scripts (`loadClassic`: `rng.js`, `store.js`, `rules.js`, `content.js`, `gfx.js`) and are the same files the Node tests run.
 - **rules.js** is side-effect free; snapshots are cloned via JSON so `applyCommand` never mutates its input; `hashState`, `serialize` / `deserialize` and command validation are unchanged.
 - **Controller** (`game.ts`): `round` holds `cfg, ctx, state, history[], startMs, pausedTotal, pausedAt, endMs, cursor, over, timedOut, warned, lesson, lessonCount, lb, showAt`; command ids `c<n>` are monotonic. The clock is game time (`frame().time`), checked each frame (the browser build's 250 ms timer): the 10 s warning, and the resign at the limit. Pause is clock accounting, so the rules never see paused time.
 - **Renderer** (`render.ts`): consumes `(state, events, instant, freeIds)` in `syncState`, reconciles meshes to the snapshot (undo, waves) and animates only the differences. The scene draws only on the play screen (`renderer.camera` is null elsewhere).
@@ -299,5 +299,5 @@ All 3D geometry and surface textures are procedural.
 - Time-outs end as terminal reason `resigned` (the controller resigns at the limit).
 - The tutorial's `t3` lesson text says the blocked tap "explains itself"; the explanation is the shake, the caption (if captions are on) and the mistake counter.
 - 7×7 tiles fall below the 44 px touch-target guideline on 390 px-wide phones.
-- The browser build's own sound sliders (music / effects / ambience / voice) and mute are the runtime's bus volumes and mute; its synthesized fallback cues (heard while a sample loaded) are not played: until the clips load after the first press, cues are silent.
+- The browser build's own sound sliders (music / effects / ambience / voice) and mute are the runtime's bus volumes and mute; its synthesized fallback cues (heard while a sample loaded) are not played: until a clip loads, its cue is silent.
 - A guest's browser-build localStorage progress does not carry over (cloud saves do).

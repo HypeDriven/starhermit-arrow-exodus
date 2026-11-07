@@ -1,0 +1,45 @@
+# Frame-cost bench (tools/engine-tier-bench.mjs): Journey stage 1 with the room
+# on: the plate settled, then every arrow launched in the solver's order
+# (sparks, tweens, motes) and the plate cleared (the big spark burst).
+until 300 Arrow Exodus
+frames 30
+key Tab 2
+frames 2
+key Enter 2
+until 120 Journey 1 — First Flight
+frames 120
+measure start
+frames 120
+key ArrowUp 2
+frames 2
+key ArrowRight 2
+frames 2
+key ArrowRight 2
+frames 2
+key ArrowRight 2
+frames 2
+key Enter 2
+frames 70
+key ArrowLeft 2
+frames 2
+key Enter 2
+frames 70
+key ArrowLeft 2
+frames 2
+key Enter 2
+frames 70
+key ArrowDown 2
+frames 2
+key ArrowRight 2
+frames 2
+key Enter 2
+frames 70
+key ArrowUp 2
+frames 2
+key ArrowLeft 2
+frames 2
+key ArrowLeft 2
+frames 2
+key Enter 2
+frames 150
+measure stop

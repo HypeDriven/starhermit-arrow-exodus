@@ -1,23 +1,22 @@
-// Unit tests for the graphics quality model (js/gfx.js): the runtime's quality
-// tier picks a preset, the level scales the spark budget. Run: npm run test:unit
+// Unit tests for the game's art per graphics tier (js/gfx.js): the runtime's
+// quality tier picks a row, the level's particle budget scales the sparks.
+// Run: npm run test:unit
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadClassic } from './load.mjs';
 
 const G = loadClassic('gfx.js').AXGfx;
 
-test('every tier resolves to its preset row, unknown tiers to balanced', () => {
+test('every tier resolves to its row, unknown tiers to balanced', () => {
   for (const p of G.PRESETS) {
-    const r = G.resolve(p, G.TIER_FLOOR[p]);
+    const r = G.resolve(p, 1);
     assert.equal(r.preset, p);
     for (const [cat, tiers] of Object.entries(G.CATEGORIES)) assert.ok(tiers.includes(r[cat]), `${p}.${cat}`);
-    assert.equal(r.shadowMap, G.SHADOW_MAP[r.shadows]);
     assert.deepEqual(r.budget.sparks, G.BUDGETS[p].sparks);
   }
-  assert.equal(G.resolve('nonsense', 3).preset, 'balanced');
-  assert.equal(G.resolve('low', 0).shadows, 'off');
-  assert.equal(G.resolve('low', 0).budget.material, 'lambert');
-  assert.equal(G.resolve('ultra', 7).budget.geometry, 'rich');
+  assert.equal(G.resolve('nonsense', 1).preset, 'balanced');
+  assert.equal(G.resolve('low', 1).budget.material, 'lambert');
+  assert.equal(G.resolve('ultra', 1).budget.geometry, 'rich');
 });
 
 test('budgets are monotonic across tiers', () => {
@@ -29,11 +28,16 @@ test('budgets are monotonic across tiers', () => {
 });
 
 test('sparks grow with the level within a tier, at most 4x and never past the pool', () => {
-  const base = G.budget('high', 4).sparks;
-  const up = G.budget('high', 6).sparks;
+  const base = G.budget('high', 1).sparks;
+  const up = G.budget('high', 2).sparks;
   assert.ok(up[0] > base[0] && up[1] > base[1]);
-  const top = G.budget('balanced', 9);
+  const top = G.budget('balanced', 64);
   assert.ok(top.sparks[1] <= top.pool);
   assert.ok(top.sparks[0] <= G.BUDGETS.balanced.sparks[0] * 4);
-  assert.deepEqual(G.budget('ultra', 0).sparks, G.BUDGETS.ultra.sparks, 'below the floor: the tier budget');
+  assert.deepEqual(G.budget('ultra', 0.5).sparks, G.BUDGETS.ultra.sparks, 'below the anchor: the tier budget');
+});
+
+test('the texture is held to the level', () => {
+  assert.equal(G.budget('ultra', 1, 256).texture, 256);
+  assert.equal(G.budget('high', 1, 4096).texture, 256);
 });
