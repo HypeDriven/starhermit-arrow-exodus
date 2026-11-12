@@ -1,3 +1,5 @@
+// localization-runtime:attached
+import { setLocalizedStyles as __l10nStyles } from "./l10n/font.js";
 // The look of the menus and HUD: the browser build's style sheets
 // (index.html's <style> and css/menu.css, rewritten class-based as
 // tools/ui-style.css and converted once with `npm run css` into
@@ -18,7 +20,7 @@ export function initStyles(): void {
   });
   const modal = css.styles[".modal"]!;
   const dim = css.styles[".modal-backdrop"]!;
-  ui.setStyles({
+  __l10nStyles({
     ...css.styles,
     dialog: {
       background: modal.background!, radius: modal.radius!, padding: modal.padding!,

@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.js";
 // Arrow Exodus on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. Clear a metal plate of enamel arrows by
@@ -81,10 +82,14 @@ onTouch((e) => {
 });
 
 // -- the frame ----------------------------------------------------------------------------------
-onUpdate((dt) => {
+onUpdate(__l10nRender((dt) => {
   render.applyLook(look());
   game.tick();
   audio.pollBeds();
   buildUi();
   render.update(dt);
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.js";
+__installLanguageMenu(true);

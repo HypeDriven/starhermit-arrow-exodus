@@ -1,3 +1,5 @@
+import { localizedStyle as __l10nStyle } from "./l10n/font.js";
+import { openLocalizedOptions as openMenu } from "./l10n/menu.js";
 // The browser build's DOM screens as starhermit:ui, built every frame: the
 // title (key art with its slow drift, the vignette, kicker, name, rule,
 // tagline, account line, Play and the secondary grid), the mode list and the
@@ -8,7 +10,7 @@
 // plate. The browser's media queries are layouts picked by
 // the window's logical size: phone width (≤ 640 px, the title's ≤ 760 px)
 // and short landscape (≤ 500 px tall).
-import { frame, openMenu } from "starhermit:engine";
+import { frame } from "starhermit:engine";
 import { bindingLabel, primaryPointer } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { requestSignIn } from "starhermit:platform";
@@ -42,10 +44,10 @@ function button(id: string, text: string, styles: Cls[], width?: number): boolea
     if (w > width) {
       const pad = w - ui.measureText(text, { style: styles.filter(Boolean) as (string | ui.Style)[] }).width / s;
       const align = styles.includes("btn-list") ? "start" : "center";
-      return ui.style(...styles, "wide").id(id).button(text, { content: () => { ui.style({ text: { align } }).paragraph(text, Math.max(40, width - pad)); } });
+      return ui.style(...__l10nStyle(styles), __l10nStyle("wide")).id(id).button(text, { content: () => { ui.style(__l10nStyle({ text: { align } })).paragraph(text, Math.max(40, width - pad)); } });
     }
   }
-  return ui.style(...styles).id(id).button(text);
+  return ui.style(...__l10nStyle(styles)).id(id).button(text);
 }
 
 interface Btn { id: string; text: string; primary?: boolean; act: () => void }
@@ -113,14 +115,14 @@ function titleScreen(v: View): void {
   ui.scrollArea("title-scroll", full, () => {
     ui.column("title-page", () => {
       const content = ui.column("menu-content", () => {
-        ui.style("menu-kicker").paragraph(t("kicker"), inner);
+        ui.style(__l10nStyle("menu-kicker")).paragraph(t("kicker"), inner);
         let size = v.short ? 35.2 : phone ? clamp(v.w * 0.1, 33.6, 48) : clamp(v.w * 0.07, 41.6, 73.6);
         const tw = ui.measureText("Arrow Exodus", { style: ["menu-title", { text: { size } }] }).width / s;
         if (tw > inner) size = Math.max(20, size * inner / tw * 0.98);
-        ui.style("menu-title", { text: { size } }).label("Arrow Exodus");
+        ui.style(__l10nStyle("menu-title"), __l10nStyle({ text: { size } })).label("Arrow Exodus");
         ui.widget("", { role: "none", size: { width: 88, height: 3 }, style: "menu-rule" });
-        ui.style("menu-tagline", v.short && { text: { size: 14.7 } }).paragraph(t("tagline"), Math.min(inner, 42 * 16));
-        ui.style("menu-account").id("account-line").paragraph(accountLine(), inner);
+        ui.style(__l10nStyle("menu-tagline"), __l10nStyle(v.short && { text: { size: 14.7 } })).paragraph(t("tagline"), Math.min(inner, 42 * 16));
+        ui.style(__l10nStyle("menu-account")).id("account-line").paragraph(accountLine(), inner);
         const actionsW = Math.min(inner, v.short ? 520 : 340);
         ui.column("menu-actions", () => {
           if (button("btn-play", t("play"), ["menu-play", "wide", v.short && { padding: { top: 8, bottom: 8 } }], actionsW)) act(() => game.startJourney(game.nextJourneyIndex()));
@@ -182,8 +184,8 @@ function page(v: View, key: string, build: (inner: number) => void): void {
     }, { width: v.w, align: "center" });
   });
 }
-const heading = (text: string, inner: number): void => { ui.style("heading2").paragraph(text, inner); };
-const para = (text: string, inner: number, ...cls: Cls[]): void => { ui.style("text", ...cls).paragraph(text, inner); };
+const heading = (text: string, inner: number): void => { ui.style(__l10nStyle("heading2")).paragraph(text, inner); };
+const para = (text: string, inner: number, ...cls: Cls[]): void => { ui.style(__l10nStyle("text"), ...__l10nStyle(cls)).paragraph(text, inner); };
 function back(id: string, inner: number): void {
   if (button(id, t("backModes"), ["btn"], inner)) act(() => game.showScreen("modes"));
 }
@@ -292,12 +294,12 @@ function playScreen(v: View): void {
     // HUD beside the board so the board uses nearly the full height.
     const sideW = Math.min(240, (v.w - pad * 2) * 0.27);
     const left = ui.place("hud-left", { anchor: "top-start", x: pad, y: 8 }, () => {
-      ui.style("hud-title", { text: { size: 17.6 } }).id("hud-title").paragraph(r.ctx.label(), sideW);
-      if (r.ctx.sub) ui.style("hud-subtitle").id("hud-subtitle").paragraph(r.ctx.sub(), sideW);
+      ui.style(__l10nStyle("hud-title"), __l10nStyle({ text: { size: 17.6 } })).id("hud-title").paragraph(r.ctx.label(), sideW);
+      if (r.ctx.sub) ui.style(__l10nStyle("hud-subtitle")).id("hud-subtitle").paragraph(r.ctx.sub(), sideW);
     }, { spacing: 4, width: sideW });
     const right = ui.place("hud-right", { anchor: "top-end", x: pad, y: 8 }, () => {
-      ui.style("caption-line").id("caption-line").paragraph(caption || " ", sideW);
-      ui.style("hud-status").id("hud-status").paragraph(game.hudStatus(), sideW);
+      ui.style(__l10nStyle("caption-line")).id("caption-line").paragraph(caption || " ", sideW);
+      ui.style(__l10nStyle("hud-status")).id("hud-status").paragraph(game.hudStatus(), sideW);
       ui.column("hud-actions", () => {
         for (const b of hudActions()) if (button(b.id, b.text, ["btn", "wide"], sideW)) act(b.act);
       }, { spacing: 6, width: sideW, align: "stretch" });
@@ -306,12 +308,12 @@ function playScreen(v: View): void {
   } else {
     const width = Math.min(1180, v.w) - pad * 2;
     const top = ui.place("hud-top", { anchor: "top", y: v.narrow ? 12 : 18 }, () => {
-      ui.style("hud-title", v.narrow && { text: { size: 20 } }).id("hud-title").paragraph(r.ctx.label(), width);
-      if (r.ctx.sub) ui.style("hud-subtitle").id("hud-subtitle").paragraph(r.ctx.sub(), width);
+      ui.style(__l10nStyle("hud-title"), __l10nStyle(v.narrow && { text: { size: 20 } })).id("hud-title").paragraph(r.ctx.label(), width);
+      if (r.ctx.sub) ui.style(__l10nStyle("hud-subtitle")).id("hud-subtitle").paragraph(r.ctx.sub(), width);
     }, { spacing: 4, width });
     const bottom = ui.place("hud-bottom", { anchor: "bottom", y: v.narrow ? 12 : 18 }, () => {
-      ui.style("caption-line", { text: { align: "center" } }).id("caption-line").paragraph(caption || " ", width);
-      ui.style("hud-status", { text: { align: "center" } }).id("hud-status").paragraph(game.hudStatus(), width);
+      ui.style(__l10nStyle("caption-line"), __l10nStyle({ text: { align: "center" } })).id("caption-line").paragraph(caption || " ", width);
+      ui.style(__l10nStyle("hud-status"), __l10nStyle({ text: { align: "center" } })).id("hud-status").paragraph(game.hudStatus(), width);
       buttonRows("hud-actions", hudActions(), width, 10, "center");
     }, { spacing: 6, width, align: "center" });
     frameRect = { x: 0, y: top.y + top.height, w: f.width, h: bottom.y - (top.y + top.height) };
@@ -344,8 +346,8 @@ function pauseCard(v: View): void {
 function scoreLines(lines: [string, string][], inner: number): void {
   ui.grid("score-lines", () => {
     lines.forEach(([k, val], i) => {
-      ui.style("score-key").id(`sk-${i}`).label(k);
-      ui.style("score-val").id(`sv-${i}`).label(val);
+      ui.style(__l10nStyle("score-key")).id(`sk-${i}`).label(k);
+      ui.style(__l10nStyle("score-val")).id(`sv-${i}`).label(val);
     });
   }, { columns: [{ fr: 1 }, { width: "auto", align: "end" }], gap: { row: 3, column: 16 }, width: inner });
 }
@@ -367,7 +369,7 @@ function resultsCard(v: View): void {
     art(cls, inner, v);
     scoreLines(game.scoreBreakdown(st), inner);
     const lb = game.leaderboardLine();
-    if (lb) ui.style("small", "text").id("results-lb").paragraph(lb, inner);
+    if (lb) ui.style(__l10nStyle("small"), __l10nStyle("text")).id("results-lb").paragraph(lb, inner);
     const list: Btn[] = [{ id: "btn-replay", text: t("replay"), primary: true, act: game.restart }];
     if (r.ctx.kind === "journey" && won && r.ctx.index! + 1 < Content.JOURNEY.length) list.push({ id: "btn-next", text: t("nextStage"), act: game.next });
     list.push({ id: "btn-results-modes", text: t("backModes"), act: game.toModes });
@@ -403,7 +405,7 @@ function settingsCard(v: View): void {
       : { text: game.themeName(th) });
     const i = Math.max(0, themes.findIndex((th) => th.id === st.theme));
     ui.column("set-theme-row", () => {
-      ui.style("text").label(t("set.theme"));
+      ui.style(__l10nStyle("text")).label(t("set.theme"));
       const n = ui.id("set-theme").select(t("set.theme"), i, options);
       if (n !== i && themes[n] && stars >= themes[n]!.unlockStars) {
         setGameSetting("theme", themes[n]!.id);
