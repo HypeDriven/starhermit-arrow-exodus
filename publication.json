@@ -1,0 +1,103 @@
+{
+  "game": {
+    "id": "20cdcab7-974e-4b01-8075-c833b3a21766",
+    "displayName": "Arrow Exodus",
+    "hosting": {
+      "hostingEnabled": true,
+      "hostedUrl": "https://20cdcab7-974e-4b01-8075-c833b3a21766.starhermit.com/index.html",
+      "deployStatus": "live",
+      "pinnedCommitSha": null,
+      "deployedCommitSha": null,
+      "deployError": null,
+      "deployedAt": "2026-11-12T08:12:37.999976+00:00",
+      "externalLaunchUrl": null,
+      "engineVersion": "1.38.0",
+      "deployWarning": null
+    }
+  },
+  "publishedAt": "2026-11-12T08:12:44.267Z",
+  "sourceCommit": "a92b74e7aea2eb47eaae141ae7525a1447fd5ae2",
+  "bytesReceived": 1971403,
+  "archiveSha256": "7a4007c2ef184597543aa8c77be6d9bf52b901e0dd8db2e6748124db5fc25d0b",
+  "indexSha256": "14d60f6ac2c5c5c9b6f5f9ded3aeaafbc4d45ddb25aa37b16be837bdfd3a9683",
+  "result": {
+    "clientPublished": true,
+    "serverImageLoaded": false,
+    "imageDigest": null,
+    "bytesReceived": 1971403,
+    "mode": "replace",
+    "filesRemoved": 0,
+    "engineVersion": "1.38.0",
+    "deployWarning": null
+  },
+  "liveVerification": {
+    "at": "2026-11-12T08:12:44.267Z",
+    "files": [
+      {
+        "file": "starhermit-files.json",
+        "sha256": "14d60f6ac2c5c5c9b6f5f9ded3aeaafbc4d45ddb25aa37b16be837bdfd3a9683",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Hebrew.ttf",
+        "sha256": "f4f4cff1649254ed85a561063c4f626d04518aef7a646182b760b90b33f71ed5",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Japanese.otf",
+        "sha256": "56940007a5225095d9f0b3eee24c357ce1f7953182e43b68abc0569db542795c",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Khmer.ttf",
+        "sha256": "602ffd72f3de6d5a69874ff6b3ce23d28150c4bf5105bcf0a775fb125e9207bf",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/SimplifiedChinese.otf",
+        "sha256": "6dd8d7eb690d9e1c9cff546b66f53dc2fac740da8cb3cbcaf34c8a54faa648ca",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/Tamil.ttf",
+        "sha256": "5e945dec9ec8f2db62a1743ed059413eaa358c8a59ea0eeecb5e3c38037661a8",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/TraditionalChinese.otf",
+        "sha256": "e056f1c94eb162838859c6f03020a35ec22bc4877b5890a221ee33abda0290f7",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/common.json",
+        "sha256": "a7feee2bbb88fb489b98d548b39da83acc4aba240e9331867d70ee00e55ca6fc",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/fonts.json",
+        "sha256": "37beaea0dba54c9f2c45995cbf9fd19fad21719d701718c41d7e58dd7748ca13",
+        "status": 200
+      },
+      {
+        "file": "assets/localization/locales.json",
+        "sha256": "dfc3d8bc1e2b71281aa1262c84ffbc36643c640d4e69b3fadeb6aabf1601cf62",
+        "status": 200
+      },
+      {
+        "file": "assets/strings.json",
+        "sha256": "0d7c3ef8549370055c4228186d60876d8561b3a0afdfde6c5db08fcdc021b04f",
+        "status": 200
+      },
+      {
+        "file": "index.html",
+        "sha256": "9f8398f6324f5dc5882de854264b7de3f3a7fdf9ee40e1e5608c17c65ac1bf92",
+        "status": 200
+      },
+      {
+        "file": "starhermit.txt",
+        "sha256": "f9370138f6a68f20e15b518eb95e71d3ae895292db93919dc5d911a080bd39fb",
+        "status": 200
+      }
+    ]
+  }
+}
