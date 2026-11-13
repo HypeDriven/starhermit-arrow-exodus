@@ -6,7 +6,7 @@
 // post, and the actions every screen calls. The rules, content and seeds are
 // the shared classic scripts (js/rules.js, js/content.js, js/rng.js), so a
 // round plays exactly as before. screens.ts draws this state each frame.
-import { frame } from "starhermit:engine";
+import { afterRender, frame } from "starhermit:engine";
 import * as ui from "starhermit:ui";
 import { announce } from "starhermit:ui";
 import { loadClassic } from "starhermit:script";
@@ -252,6 +252,8 @@ export function hint(): void {
   audio.play("hint");
 }
 
+let cursorAnnouncement = "";
+let cursorAnnouncementQueued = false;
 export function moveCursor(dr: number, dc: number): void {
   if (!round || !playable()) return;
   const { rows, cols } = round.cfg.board;
@@ -260,7 +262,13 @@ export function moveCursor(dr: number, dc: number): void {
   render.setCursor(round.cursor);
   audio.play("cursor");
   const p = pieceAt(round.cursor[0], round.cursor[1]);
-  announce(`${round.cursor[0] + 1}, ${round.cursor[1] + 1}` + (p ? ` ${["↑", "→", "↓", "←"][p.d]}` : ""));
+  cursorAnnouncement = `${round.cursor[0] + 1}, ${round.cursor[1] + 1}` + (p ? ` ${["↑", "→", "↓", "←"][p.d]}` : "");
+  if (cursorAnnouncementQueued) return;
+  cursorAnnouncementQueued = true;
+  afterRender(() => {
+    cursorAnnouncementQueued = false;
+    announce(cursorAnnouncement);
+  });
 }
 function pieceAt(r: number, c: number): render.Piece | null {
   if (!round) return null;

@@ -65,7 +65,7 @@ try {
       return document.documentElement.dataset.starhermit === 'error' || (s && s.hidden);
     }, null, { timeout: 60000 }).then(() => true, () => false);
     await page.waitForTimeout(5000);
-    const shot = async (name) => { if (shots) { mkdirSync(shots, { recursive: true }); await page.screenshot({ path: join(shots, `${v.name}-${name}.png`) }); } };
+    const shot = async (name) => { if (shots) { mkdirSync(shots, { recursive: true }); await page.screenshot({ path: join(shots, `${v.name}-${name}.png`), timeout: 120000 }); } };
     await shot('title');
     // Play by keyboard (the first focus stop), a hint, a tap on the plate's
     // middle (an empty cell or a blocked arrow: either is harmless to the
