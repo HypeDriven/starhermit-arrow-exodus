@@ -33,14 +33,14 @@ if (!exe) {
 
 let failed = 0;
 try {
-  const out = execFileSync(exe, ['check', '.', '--quiet'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = execFileSync(exe, ['check', '.', '--quiet', '--no-motion-blur'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   const warnings = out.split('\n').filter((l) => /^warning/i.test(l));
   if (warnings.length) { failed++; console.log(`not ok - starhermit check warns\n${warnings.join('\n')}`); }
   else console.log('ok - starhermit check');
 } catch (e) { failed++; console.log(`not ok - starhermit check\n${(e.stderr || e.stdout || e.message).trim()}`); }
 for (const f of readdirSync(join(root, 'tests', 'native')).filter((n) => n.endsWith('.play')).sort()) {
   try {
-    execFileSync(exe, ['.', '--render-check', '--guest', '--script', `tests/native/${f}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync(exe, ['.', '--render-check', '--no-motion-blur', '--guest', '--script', `tests/native/${f}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     console.log(`ok - ${f}`);
   } catch (e) { failed++; console.log(`not ok - ${f}\n${(e.stderr || e.stdout || e.message).trim()}`); }
 }

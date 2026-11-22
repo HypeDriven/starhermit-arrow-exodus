@@ -27,5 +27,5 @@ export function look(): Look {
       antialias: s.antialias,
     };
   }
-  return cur;
+  return cur!;
 }

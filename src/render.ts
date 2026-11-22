@@ -32,6 +32,7 @@ import {
   ClampToEdgeWrapping, RingGeometry, RoomEnvironment, SRGBColorSpace, SphereGeometry, Vector3, pointerToNdc, renderer, scene,
 } from "starhermit:scene";
 import type { Material, Texture } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { arrowGeometry, roundedSlab } from "./geometry.js";
 
 // -- the shapes the renderer reads ------------------------------------------------------
@@ -43,7 +44,7 @@ export interface Theme { id: string; palette: Palette }
 export interface Look {
   preset: string;
   // The engine's, from levelSettings(): 0 = no shadows, null = off.
-  shadows: number; ao: { resolution: number; samples: number; denoiseSamples: number } | null; bloom: number | null; grade: boolean; antialias: "off" | "fxaa" | "smaa" | "msaa";
+  shadows: number; ao: { resolution: number; samples: number; denoiseSamples: number } | null; bloom: number | null; grade: boolean; antialias: "off" | "fxaa" | "smaa" | "msaa" | "taa";
   // The game's art, by quality tier (js/gfx.js).
   reflections: string; detail: string; particles: string; background: string;
   budget: { geometry: string; material: string; texture: number; sparks: number[]; pool: number; motes: number };
@@ -170,74 +171,34 @@ class Tweens {
   get busy(): boolean { return this.list.length > 0; }
 }
 
-// ---------- pooled particle bursts (never raycast) ----------
+// ---------- native particle bursts (GPU simulation with automatic CPU fallback) ----------
 class Particles {
-  cap: number; pos: Float32Array; vel: Float32Array; life: Float32Array; col: Float32Array;
-  points: Points; cursor = 0; boost = 1; active: number;
+  cap: number; active: number; boost = 1; emitter: GPUParticleEmitter;
   constructor(capacity: number) {
-    this.cap = capacity;
-    this.pos = new Float32Array(capacity * 3);
-    this.vel = new Float32Array(capacity * 3);
-    this.life = new Float32Array(capacity);
-    this.col = new Float32Array(capacity * 3);
-    for (let i = 0; i < capacity; i++) this.pos[i * 3 + 1] = -999;
-    const g = new BufferGeometry();
-    g.setAttribute("position", new BufferAttribute(this.pos, 3));
-    g.setAttribute("color", new BufferAttribute(this.col, 3));
-    this.points = new Points(g, new PointsMaterial({ size: 0.07, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, sizeAttenuation: true }));
-    this.points.frustumCulled = false;
-    scene.add(this.points);
-    this.active = capacity;
+    this.cap = this.active = capacity;
+    const material = new PointsMaterial({ size: 0.07, transparent: true, opacity: 0.95, depthWrite: false, sizeAttenuation: true });
+    this.emitter = new GPUParticleEmitter({
+      capacity, cpuCapacity: capacity, material, rate: 0, life: [0.7, 1.1], space: "world",
+      velocity: [0, 1.4, 0], velocitySpread: [1.2, 0.7, 0.6], gravity: [0, -4.5, 0],
+      size: [1, 0.75], opacity: [0.95, 0.7, 0], rotationSpread: PI, spinSpread: 3,
+    });
+    scene.add(this.emitter);
   }
-  setPool(n: number): void {
-    this.active = Math.max(1, Math.min(this.cap, n));
-    for (let i = this.active; i < this.cap; i++) { this.life[i] = 0; this.pos[i * 3 + 1] = -999; }
-    if (this.cursor >= this.active) this.cursor = 0;
-    this.points.geometry.setDrawRange(0, this.active);
-    this.upload(true, false);
-  }
+  setPool(n: number): void { this.active = Math.max(1, Math.min(this.cap, n)); }
   /** high: additive glowing sparks; boost > 1 pushes colours into the bloom range. */
   setMode(high: boolean, boost: number): void {
-    const m = this.points.material;
+    const m = this.emitter.material;
     m.blending = high ? AdditiveBlending : NormalBlending;
     m.size = high ? 0.085 : 0.07;
     m.toneMapped = boost <= 1;
     this.boost = boost;
+    this.emitter.set({ stretch: high ? { speed: 0.04, max: 0.35 } : null });
   }
   burst(p: Vector3, color: number, n: number, spread: number, up: number): void {
-    const c = new Color(color);
-    for (let k = 0; k < n; k++) {
-      const i = this.cursor; this.cursor = (this.cursor + 1) % this.active;
-      this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z;
-      const a = Math.random() * PI * 2, r = Math.random() * spread;
-      this.vel[i * 3] = Math.cos(a) * r;
-      this.vel[i * 3 + 1] = Math.random() * up + 0.8;
-      this.vel[i * 3 + 2] = Math.sin(a) * r * 0.5;
-      this.life[i] = 0.7 + Math.random() * 0.4;
-      const b = this.boost * (0.7 + Math.random() * 0.6);
-      this.col[i * 3] = c.r * b; this.col[i * 3 + 1] = c.g * b; this.col[i * 3 + 2] = c.b * b;
-    }
-    this.upload(true, true);
-  }
-  tick(dt: number): void {
-    let any = false;
-    for (let i = 0; i < this.active; i++) {
-      if (this.life[i]! <= 0) continue;
-      any = true;
-      this.life[i]! -= dt;
-      if (this.life[i]! <= 0) { this.pos[i * 3 + 1] = -999; continue; }
-      this.vel[i * 3 + 1]! -= 4.5 * dt;
-      this.pos[i * 3]! += this.vel[i * 3]! * dt;
-      this.pos[i * 3 + 1]! += this.vel[i * 3 + 1]! * dt;
-      this.pos[i * 3 + 2]! += this.vel[i * 3 + 2]! * dt;
-    }
-    if (any) this.upload(true, false);
-  }
-  /** Attributes are copied when set: hand the arrays over again. */
-  upload(pos: boolean, col: boolean): void {
-    const g = this.points.geometry;
-    if (pos) { const a = (g.getAttribute("position") as BufferAttribute); a.array = this.pos; a.needsUpdate = true; }
-    if (col) { const a = (g.getAttribute("color") as BufferAttribute); a.array = this.col; a.needsUpdate = true; }
+    this.emitter.set({ velocity: [0, 0.8 + up * 0.5, 0], velocitySpread: [spread, up * 0.5, spread * 0.5] });
+    const tint = new Color(color).multiplyScalar(this.boost);
+    const count = Math.max(1, Math.round(n * this.active / this.cap));
+    this.emitter.burst(count, [p.x, p.y, p.z], { color: tint });
   }
 }
 
@@ -313,6 +274,7 @@ function build(): void {
   scene.add(motes);
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
+  void renderer.compileAsync?.(scene, camera).catch(() => {});
 }
 
 /** Shows or hides the plate (the title and menus draw over nothing). */
@@ -813,6 +775,7 @@ export function applyLook(next: Look): void {
     vignette: { amount: 0.26, inner: 0.3, outer: 0.8, scale: [1, 0.9] },
   } : null;
   renderer.antialias = next.antialias;
+  renderer.motionBlur = next.bloom !== null ? { intensity: 0.25, samples: 8, maxPixels: 16, targetFps: 60, camera: false } : null;
   if (theme) setTheme(theme); // materials and the board pick up detail / env / geometry changes
   applyMotion();
 }
@@ -829,7 +792,6 @@ export function update(dtRaw: number): void {
   if (!q || !renderer.camera) return;
   const dt = Math.min(0.05, dtRaw || 0.016);
   tweens.tick(dt);
-  particles!.tick(dt);
   pulseT += dt;
   // ambient life: dust motes and a faint lamp shimmer (static under reduced motion)
   if (motes!.visible) {

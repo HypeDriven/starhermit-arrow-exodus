@@ -38,7 +38,9 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const url = `http://127.0.0.1:${server.address().port}/`;
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--enable-features=Vulkan'] });
+const { launchChrome } = await import(new URL('../../tools/gpu-chrome.mjs', import.meta.url));
+const { browser, gpu, close } = await launchChrome(chromium);
+console.log(`# chrome on ${gpu}`);
 let failed = false;
 const views = [
   { name: 'desktop', viewport: { width: 1366, height: 768 } },
@@ -62,7 +64,9 @@ try {
     await page.goto(url, { waitUntil: 'load' });
     const started = await page.waitForFunction(() => {
       const s = document.getElementById('starhermit-status');
-      return document.documentElement.dataset.starhermit === 'error' || (s && s.hidden);
+      const canvas = document.querySelector('canvas');
+      const overlay = document.querySelector('.starhermit-overlay');
+      return document.documentElement.dataset.starhermit === 'error' || (s && s.hidden && canvas?.getAttribute('role') === 'application' && overlay?.hidden);
     }, null, { timeout: 60000 }).then(() => true, () => false);
     await page.waitForTimeout(5000);
     const shot = async (name) => { if (shots) { mkdirSync(shots, { recursive: true }); await page.screenshot({ path: join(shots, `${v.name}-${name}.png`), timeout: 120000 }); } };
@@ -70,8 +74,8 @@ try {
     // Play by keyboard (the first focus stop), a hint, a tap on the plate's
     // middle (an empty cell or a blocked arrow: either is harmless to the
     // solution below), then the solution.
-    await page.keyboard.press('Tab'); await page.waitForTimeout(300);
-    await page.keyboard.press('Enter'); await page.waitForTimeout(2500);
+    await page.keyboard.press('Tab'); await page.keyboard.press('Enter');
+    await page.waitForTimeout(2500);
     await page.keyboard.press('KeyH'); await page.waitForTimeout(1000);
     await shot('game');
     const vp = page.viewportSize();
@@ -84,15 +88,18 @@ try {
     const cleared = await page.evaluate(() => document.body.innerText.includes('Plate cleared'));
     const state = await page.evaluate(() => document.documentElement.dataset.starhermit ?? '');
     const errorText = state === 'error' ? await page.evaluate(() => document.querySelector('[role=alert]')?.textContent ?? '') : '';
-    const ok = started && state !== 'error' && problems.length === 0;
-    if (!cleared) console.log(`  (${v.name}: the results card was not seen in the page's text; see the screenshots)`);
+    const ok = started && cleared && state !== 'error' && problems.length === 0;
+    if (!cleared) {
+      console.log(`  (${v.name}: the results card was not seen in the page's text; see the screenshots)`);
+      if (process.env.AX_DEBUG) console.log(await page.evaluate(() => document.body.innerText.slice(-4000)));
+    }
     failed ||= !ok;
     console.log(`${ok ? 'ok' : 'not ok'} - ${v.name}: started=${started} state=${state || '-'}${errorText ? ` error="${errorText.trim()}"` : ''}`);
     for (const p of problems) console.log(`  ${p}`);
     await ctx.close();
   }
 } finally {
-  await browser.close();
+  await close();
   server.close();
 }
 process.exit(failed ? 1 : 0);
