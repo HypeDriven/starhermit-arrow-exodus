@@ -1,3 +1,4 @@
+import { showCursor } from "./cursor.js";
 import { withLanguageRender as __l10nRender } from "./l10n/menu.js";
 // Arrow Exodus on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
@@ -21,6 +22,7 @@ import { buildUi, noteSignedOut } from "./screens.js";
 import { initStyles } from "./style.js";
 
 onStart(() => {
+  showCursor();
   initStyles();
   initSave();
   refresh();
