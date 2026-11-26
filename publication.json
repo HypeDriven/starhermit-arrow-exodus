@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T07:00:26.545468+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-26T11:40:57.213623+00:00",
+    "coverArtUpdatedAt": "2026-11-26T19:47:44.114726+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-26T11:40:56.008787+00:00",
+      "deployedAt": "2026-11-26T19:47:44.10327+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.50.0",
+      "engineVersion": "1.51.0",
       "deployWarning": null
     },
     "description": "Clear a board of arrow tiles by releasing each one when its path to the edge is open.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-26T11:40:57.408Z",
-  "sourceCommit": "91be8b54bff676d90ff8ddd0684e1b952ea70831",
-  "bytesReceived": 2994456,
-  "archiveSha256": "c51074296f19aa47dfe4e1d5f9b34f8b81366c6f7a50c126c2924f41227bbb66",
+  "publishedAt": "2026-11-26T19:47:44.299Z",
+  "sourceCommit": "8c48759004573d58d0e8af04a1a4c2a84892afc5",
+  "bytesReceived": 2994485,
+  "archiveSha256": "47a26b1685a8afce5de9f9a8d0fb0c18044ca1d0689b4e3734db4c330d082310",
   "indexSha256": "f8d9b1485e95eb0b18f5b634af597f167886520eabd73993eb0fbd9816e93398",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 2994456,
+    "bytesReceived": 2994485,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.50.0",
+    "engineVersion": "1.51.0",
     "deployWarning": null
   },
   "liveVerification": {
